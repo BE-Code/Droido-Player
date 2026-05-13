@@ -7,7 +7,7 @@ NFC Jukebox on android
         1. Go to https://github.com/termux/termux-app/releases
         2. In the Android 7+ Category, select the one that ends with __________
         3. Run the downloaded file to install the app
-    2. **Musicolet** for the play store
+    2. **Musicolet** from the play store
     3. **Automate** by Llama lab from the play store
 2. **Configure Apps**
     1. **Settings App**
