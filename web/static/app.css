@@ -1,0 +1,37 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 1.5rem;
+  max-width: 40rem;
+}
+
+#tap-id {
+  font-size: 1.5rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.muted {
+  color: #555;
+  font-size: 0.9rem;
+}
+
+.live {
+  color: #0a0;
+  font-size: 0.85rem;
+}
+
+.dead {
+  color: #a00;
+  font-size: 0.85rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
