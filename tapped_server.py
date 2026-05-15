@@ -3,8 +3,9 @@ import threading
 from collections import deque
 from http.server import ThreadingHTTPServer
 
-WAIT_TAP_TIMEOUT_SEC = 120.0
+from card_playback import schedule_play_card_for_tap
 
+WAIT_TAP_TIMEOUT_SEC = 120.0
 
 class TappedServer(ThreadingHTTPServer):
     """Routes each tap to the next waiting long-poll, FIFO."""
@@ -37,3 +38,5 @@ class TappedServer(ThreadingHTTPServer):
                 q.put_nowait(tap_id)
             except queue.Full:
                 pass
+        else:
+            schedule_play_card_for_tap(tap_id)

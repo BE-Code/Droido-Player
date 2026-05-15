@@ -3,8 +3,9 @@ import mimetypes
 import queue
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
+from card_playback import sanitize_tap_id
 from tapped_server import WAIT_TAP_TIMEOUT_SEC
 
 WEB_ROOT = Path(__file__).resolve().parent / 'web'
@@ -80,7 +81,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
             return
 
         if len(path_parts) == 2 and path_parts[0] == 'tapped':
-            tap_id = path_parts[1]
+            tap_id = sanitize_tap_id(unquote(path_parts[1]))
+            if tap_id is None:
+                self.send_response(400)
+                self.send_header('Content-type', 'text/plain; charset=utf-8')
+                self.end_headers()
+                self.wfile.write(b'invalid tap id')
+                return
             self.server.record_tap(tap_id)
 
             self.send_response(200)
