@@ -19,9 +19,11 @@ NFC Jukebox on android
     2. **Termux:API**
        1. Open the app
        2. Use the buttons to change settings for "battery optimizations" and "display over other apps"
-    3. **Termux**
-        1. Run `pkg install git`
-        2. Run `git clone https://github.com/BE-Code/Droido-Player.git`
-        3. Run `cd Droido-Player`
-        4. Run `./setup` Say yes or allow to anything it asks.
+    3. **Termux** Run the following and approve anything it asks
+        ```bash
+        pkg install git; \
+        git clone https://github.com/BE-Code/Droido-Player.git; \
+        cd Droido-Player; \
+        ./setup
+        ```
     4. **Automate**
