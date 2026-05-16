@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 
 # Matches setup: APPDIR=~/storage/shared/Droido-Player-Data
@@ -59,18 +60,107 @@ def _card_folder_for_tap(tap_id: str) -> Path | None:
     return folder
 
 
-def find_m3u_for_tap(tap_id: str) -> Path | None:
-    folder = _card_folder_for_tap(tap_id)
-    if folder is None or not folder.is_dir():
-        return None
-    for candidate in sorted(folder.iterdir()):
-        if candidate.is_file() and candidate.suffix.lower() == '.m3u':
-            return candidate
-    return None
+class Card:
+    """Resolves a tap id to a data folder, optional info.json, and an ordered playback queue."""
+
+    class _UseFolderScan:
+        """Sentinel: build_queue should scan the card folder for audio."""
+
+    _USE_FOLDER_SCAN = _UseFolderScan()
+    _INFO_JSON_NAME = 'info.json'
+    _AUDIO_EXTENSIONS = frozenset({
+        '.mp3', '.flac', '.m4a', '.ogg', '.opus', '.wav', '.aac', '.wma',
+    })
+
+    @staticmethod
+    def _path_is_under(parent: Path, candidate: Path) -> bool:
+        try:
+            candidate.resolve().relative_to(parent.resolve())
+        except ValueError:
+            return False
+        return True
+
+    @staticmethod
+    def _scan_folder_audio(folder: Path) -> list[Path]:
+        exts = Card._AUDIO_EXTENSIONS
+        out = [p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in exts]
+        out.sort(key=lambda p: p.name)
+        return out
+
+    @staticmethod
+    def _tracks_override_or_use_scan(info: dict[str, Any], folder: Path) -> list[Path] | _UseFolderScan:
+        if 'tracks' not in info:
+            return Card._USE_FOLDER_SCAN
+        raw = info['tracks']
+        if raw is None:
+            return Card._USE_FOLDER_SCAN
+        if not isinstance(raw, list):
+            return Card._USE_FOLDER_SCAN
+        root = folder.resolve()
+        resolved: list[Path] = []
+        for item in raw:
+            if not isinstance(item, str):
+                continue
+            rel = item.strip()
+            if not rel:
+                continue
+            cand = (folder / rel).resolve()
+            if not Card._path_is_under(root, cand):
+                continue
+            if cand.is_file():
+                resolved.append(cand)
+        return resolved
+
+    def __init__(self, tap_id: str) -> None:
+        self._tap_id = tap_id
+        self.folder = _card_folder_for_tap(tap_id)
+        self._info: dict[str, Any] | None = None
+
+    def _load_info(self) -> dict[str, Any]:
+        if self._info is not None:
+            return self._info
+        if self.folder is None or not self.folder.is_dir():
+            self._info = {}
+            return self._info
+        path = self.folder / self._INFO_JSON_NAME
+        if not path.is_file():
+            self._info = {}
+            return self._info
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+            self._info = {}
+            return self._info
+        if not isinstance(data, dict):
+            self._info = {}
+            return self._info
+        self._info = data
+        return self._info
+
+    @property
+    def display_name(self) -> str:
+        info = self._load_info()
+        raw = info.get('name')
+        if isinstance(raw, str):
+            name = raw.strip()
+            if name:
+                return name
+        if self.folder is not None:
+            return self.folder.name
+        return self._tap_id
+
+    def build_queue(self) -> list[Path]:
+        if self.folder is None or not self.folder.is_dir():
+            return []
+        info = self._load_info()
+        tracks_mode = self._tracks_override_or_use_scan(info, self.folder)
+        if tracks_mode is self._USE_FOLDER_SCAN:
+            return self._scan_folder_audio(self.folder)
+        return tracks_mode
 
 
 class MpvPlayer:
-    """One idle mpv with JSON IPC; `play` replaces the playlist."""
+    """One idle mpv with JSON IPC; `play` / `play_paths` replace the playlist."""
 
     def __init__(self, ipc_socket: Path | str | None = None) -> None:
         self._ipc_socket = Path(ipc_socket).expanduser().resolve() if ipc_socket else None
@@ -181,11 +271,34 @@ class MpvPlayer:
         return self._wait()
 
     def play(self, m3u_path: str | Path) -> bool:
-        path = Path(m3u_path).resolve()
-        with self._lock:
-            if not self._ensure():
-                return False
-            return self._ok(self._ipc(['loadfile', str(path), 'replace']))
+        return self.play_paths([Path(m3u_path)])
+
+    def play_paths(self, paths: list[Path]) -> bool:
+        if not paths:
+            return False
+        lines = ['#EXTM3U'] + [str(p.resolve()) for p in paths]
+        text = '\n'.join(lines) + '\n'
+        fd, tmp = tempfile.mkstemp(prefix='droido-', suffix='.m3u')
+        try:
+            with os.fdopen(fd, 'w', encoding='utf-8') as fh:
+                fh.write(text)
+        except OSError:
+            try:
+                Path(tmp).unlink(missing_ok=True)
+            except OSError:
+                pass
+            return False
+        tmp_path = Path(tmp)
+        try:
+            with self._lock:
+                if not self._ensure():
+                    return False
+                return self._ok(self._ipc(['loadfile', str(tmp_path.resolve()), 'replace']))
+        finally:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     def forward(self) -> bool:
         with self._lock:
@@ -204,10 +317,11 @@ mpv = MpvPlayer()
 
 
 def _play_card_worker(tap_id: str) -> None:
-    path = find_m3u_for_tap(tap_id)
-    if path is None:
+    card = Card(tap_id)
+    paths = card.build_queue()
+    if not paths:
         return
-    mpv.play(path)
+    mpv.play_paths(paths)
 
 
 def schedule_play_card_for_tap(tap_id: str) -> None:
