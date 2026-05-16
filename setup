@@ -2,7 +2,10 @@
 echo "deb https://packages-cf.termux.dev/apt/termux-main stable main" > $PREFIX/etc/apt/sources.list
 
 pkg update -y
-pkg upgrade -y
+
+DEBIAN_FRONTEND=noninteractive \
+pkg upgrade -y -o Dpkg::Options::="--force-confold"
+
 pkg install -y python termux-api
 
 termux-setup-storage
