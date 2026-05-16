@@ -1,5 +1,9 @@
 #! /bin/bash
-pkg install python termux-api -y
+echo "deb https://packages-cf.termux.dev/apt/termux-main stable main" > $PREFIX/etc/apt/sources.list
+
+pkg update -y
+pkg upgrade -y
+pkg install -y python termux-api
 
 termux-setup-storage
 APPDIR=~/storage/shared/Droido-Player-Data
