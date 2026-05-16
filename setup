@@ -1,6 +1,5 @@
 #! /bin/bash
-pkg install python
-pkg install termux-api
+pkg install python termux-api -y
 
 termux-setup-storage
 APPDIR=~/storage/shared/Droido-Player-Data
