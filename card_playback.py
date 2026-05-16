@@ -5,7 +5,6 @@ from pathlib import Path
 
 # Matches setup: APPDIR=~/storage/shared/Droido-Player-Data
 _DEFAULT_REL = Path('storage') / 'shared' / 'Droido-Player-Data'
-_MUSICOLET_PACKAGE = 'in.krosbits.musicolet'
 # Long NFC payloads map to a folder name = first N chars (fits typical NAME_MAX).
 _TAP_ID_FOLDER_PREFIX_LEN = 255
 
@@ -65,21 +64,9 @@ def find_m3u_for_tap(tap_id: str) -> Path | None:
     return None
 
 
-def play_m3u_with_musicolet(m3u_path: Path) -> bool:
+def play_m3u_with_termux_media_player(m3u_path: Path) -> bool:
     m3u_path = m3u_path.resolve()
-    uri = m3u_path.as_uri()
-    cmd = [
-        'am',
-        'start',
-        '-a',
-        'android.intent.action.VIEW',
-        '-d',
-        uri,
-        '-t',
-        'audio/x-mpegurl',
-        '-p',
-        _MUSICOLET_PACKAGE,
-    ]
+    cmd = ['termux-media-player', 'play', str(m3u_path)]
     try:
         proc = subprocess.run(
             cmd,
@@ -97,7 +84,7 @@ def _play_card_worker(tap_id: str) -> None:
     path = find_m3u_for_tap(tap_id)
     if path is None:
         return
-    play_m3u_with_musicolet(path)
+    play_m3u_with_termux_media_player(path)
 
 
 def schedule_play_card_for_tap(tap_id: str) -> None:
