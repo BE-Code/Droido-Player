@@ -11,3 +11,7 @@ pkg install -y python mpv termux-api
 termux-setup-storage
 APPDIR=~/storage/shared/Droido-Player-Data
 mkdir -p "$APPDIR"
+
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cp "$SETUP_DIR/run" ~/
+chmod +x ~/run
