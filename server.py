@@ -1,3 +1,4 @@
+from card_playback import mpv
 from handlers import SimpleHandler
 from tapped_server import TappedServer
 
@@ -16,4 +17,6 @@ if __name__ == '__main__':
         server.serve_forever()
     except KeyboardInterrupt:
         print('\nShutting down server...')
+    finally:
+        mpv.stop()
         server.server_close()
