@@ -199,6 +199,15 @@ class MpvPlayer:
                 return False
             return self._ok(self._ipc(['playlist-prev', 'weak']))
 
+    def stop(self) -> bool:
+        """Stop and clear playlist if mpv is running; no-op if mpv is not up."""
+        with self._lock:
+            if not self._alive():
+                return True
+            cleared = self._ok(self._ipc(['playlist-clear']))
+            stopped = self._ok(self._ipc(['stop']))
+            return cleared and stopped
+
 
 mpv = MpvPlayer()
 
@@ -206,6 +215,7 @@ mpv = MpvPlayer()
 def _play_card_worker(tap_id: str) -> None:
     path = find_m3u_for_tap(tap_id)
     if path is None:
+        mpv.stop()
         return
     mpv.play(path)
 
