@@ -209,15 +209,15 @@ class MpvPlayer:
             return cleared and stopped
 
 
-mpv = MpvPlayer()
+audioPlayer = MpvPlayer()
 
 
 def _play_card_worker(tap_id: str) -> None:
     path = find_m3u_for_tap(tap_id)
     if path is None:
-        mpv.stop()
+        audioPlayer.stop()
         return
-    mpv.play(path)
+    audioPlayer.play(path)
 
 
 def schedule_play_card_for_tap(tap_id: str) -> None:
