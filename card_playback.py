@@ -1,33 +1,11 @@
 import json
-import logging
 import os
 import socket
 import subprocess
-import sys
 import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any
-
-log = logging.getLogger(__name__)
-
-
-def _ensure_playback_logging() -> None:
-    """stderr handler; level from DROIDO_LOG (DEBUG|INFO|WARNING) default INFO."""
-    if log.handlers:
-        return
-    h = logging.StreamHandler(sys.stderr)
-    h.setFormatter(logging.Formatter('[droido-playback] %(levelname)s: %(message)s'))
-    log.addHandler(h)
-    log.propagate = False
-    raw = os.environ.get('DROIDO_LOG', '').strip().upper()
-    if raw in ('DEBUG', '2'):
-        log.setLevel(logging.DEBUG)
-    elif raw in ('WARNING', 'QUIET', '0'):
-        log.setLevel(logging.WARNING)
-    else:
-        log.setLevel(logging.INFO)
 
 
 # Matches setup: APPDIR=~/storage/shared/Droido-Player-Data
@@ -81,114 +59,18 @@ def _card_folder_for_tap(tap_id: str) -> Path | None:
     return folder
 
 
-class Card:
-    """Resolves a tap id to a data folder, optional info.json, and an ordered playback queue."""
-
-    class _UseFolderScan:
-        """Sentinel: build_queue should scan the card folder for audio."""
-
-    _USE_FOLDER_SCAN = _UseFolderScan()
-    _INFO_JSON_NAME = 'info.json'
-    _AUDIO_EXTENSIONS = frozenset({
-        '.mp3', '.flac', '.m4a', '.ogg', '.opus', '.wav', '.aac', '.wma',
-    })
-
-    @staticmethod
-    def _path_is_under(parent: Path, candidate: Path) -> bool:
-        try:
-            candidate.resolve().relative_to(parent.resolve())
-        except ValueError:
-            return False
-        return True
-
-    @staticmethod
-    def _scan_folder_audio(folder: Path) -> list[Path]:
-        exts = Card._AUDIO_EXTENSIONS
-        out = [p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in exts]
-        out.sort(key=lambda p: p.name)
-        return out
-
-    @staticmethod
-    def _tracks_override_or_use_scan(info: dict[str, Any], folder: Path) -> list[Path] | _UseFolderScan:
-        if 'tracks' not in info:
-            return Card._USE_FOLDER_SCAN
-        raw = info['tracks']
-        if raw is None:
-            return Card._USE_FOLDER_SCAN
-        if not isinstance(raw, list):
-            return Card._USE_FOLDER_SCAN
-        root = folder.resolve()
-        resolved: list[Path] = []
-        for item in raw:
-            if not isinstance(item, str):
-                continue
-            rel = item.strip()
-            if not rel:
-                continue
-            cand = (folder / rel).resolve()
-            if not Card._path_is_under(root, cand):
-                continue
-            if cand.is_file():
-                resolved.append(cand)
-        return resolved
-
-    def __init__(self, tap_id: str) -> None:
-        self._tap_id = tap_id
-        self.folder = _card_folder_for_tap(tap_id)
-        self._info: dict[str, Any] | None = None
-
-    def _load_info(self) -> dict[str, Any]:
-        if self._info is not None:
-            return self._info
-        if self.folder is None or not self.folder.is_dir():
-            self._info = {}
-            return self._info
-        path = self.folder / self._INFO_JSON_NAME
-        if not path.is_file():
-            self._info = {}
-            return self._info
-        try:
-            data = json.loads(path.read_text(encoding='utf-8'))
-        except OSError as exc:
-            _ensure_playback_logging()
-            log.warning('info.json unreadable %s: %s', path, exc)
-            self._info = {}
-            return self._info
-        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-            _ensure_playback_logging()
-            log.warning('info.json invalid %s: %s', path, exc)
-            self._info = {}
-            return self._info
-        if not isinstance(data, dict):
-            self._info = {}
-            return self._info
-        self._info = data
-        return self._info
-
-    @property
-    def display_name(self) -> str:
-        info = self._load_info()
-        raw = info.get('name')
-        if isinstance(raw, str):
-            name = raw.strip()
-            if name:
-                return name
-        if self.folder is not None:
-            return self.folder.name
-        return self._tap_id
-
-    def build_queue(self) -> list[Path]:
-        if self.folder is None or not self.folder.is_dir():
-            return []
-        info = self._load_info()
-        tracks_mode = self._tracks_override_or_use_scan(info, self.folder)
-        if tracks_mode is self._USE_FOLDER_SCAN:
-            return self._scan_folder_audio(self.folder)
-        return tracks_mode
+def find_m3u_for_tap(tap_id: str) -> Path | None:
+    folder = _card_folder_for_tap(tap_id)
+    if folder is None or not folder.is_dir():
+        return None
+    for candidate in sorted(folder.iterdir()):
+        if candidate.is_file() and candidate.suffix.lower() == '.m3u':
+            return candidate
+    return None
 
 
 class MpvPlayer:
-    """One idle mpv with JSON IPC; `play` / `play_paths` replace the playlist."""
+    """One idle mpv with JSON IPC; `play` replaces the playlist."""
 
     def __init__(self, ipc_socket: Path | str | None = None) -> None:
         self._ipc_socket = Path(ipc_socket).expanduser().resolve() if ipc_socket else None
@@ -242,8 +124,7 @@ class MpvPlayer:
                 msg = json.loads(line.decode('utf-8'))
                 if msg.get('request_id') == rid:
                     return msg
-        except (FileNotFoundError, OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            log.debug('mpv IPC error (%s): %s', sock_path, exc)
+        except (FileNotFoundError, OSError, json.JSONDecodeError, UnicodeDecodeError):
             return None
         finally:
             if client is not None:
@@ -263,22 +144,13 @@ class MpvPlayer:
                 if self._alive():
                     return True
             time.sleep(0.05)
-        _ensure_playback_logging()
-        log.warning(
-            'mpv IPC socket not ready after %.1fs (path=%s exists=%s)',
-            timeout_sec,
-            path,
-            path.exists(),
-        )
         return False
 
     def _spawn(self) -> bool:
         sock = self._socket_path()
         try:
             self._socket_parent().mkdir(parents=True, exist_ok=True)
-        except OSError as exc:
-            _ensure_playback_logging()
-            log.warning('cannot create mpv socket parent directory %s: %s', self._socket_parent(), exc)
+        except OSError:
             return False
         cmd = [
             'mpv',
@@ -296,69 +168,24 @@ class MpvPlayer:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True,
             )
-        except FileNotFoundError:
-            _ensure_playback_logging()
-            log.warning('mpv not found on PATH (install mpv or fix PATH); cmd=%s', cmd)
-            return False
-        except OSError as exc:
-            _ensure_playback_logging()
-            log.warning('mpv spawn failed: %s cmd=%s', exc, cmd)
+        except (FileNotFoundError, OSError):
             return False
         return True
 
     def _ensure(self) -> bool:
-        _ensure_playback_logging()
         if self._alive():
             return True
-        log.info('mpv not responding; starting or restarting (socket=%s)', self._socket_path())
         self._unlink_socket()
         if not self._spawn():
             return False
-        if not self._wait():
-            return False
-        log.debug('mpv IPC ready')
-        return True
+        return self._wait()
 
     def play(self, m3u_path: str | Path) -> bool:
-        return self.play_paths([Path(m3u_path)])
-
-    def play_paths(self, paths: list[Path]) -> bool:
-        _ensure_playback_logging()
-        if not paths:
-            return False
-        lines = ['#EXTM3U'] + [str(p.resolve()) for p in paths]
-        text = '\n'.join(lines) + '\n'
-        fd, tmp = tempfile.mkstemp(prefix='droido-', suffix='.m3u')
-        try:
-            with os.fdopen(fd, 'w', encoding='utf-8') as fh:
-                fh.write(text)
-        except OSError as exc:
-            _ensure_playback_logging()
-            log.warning('failed to write temp playlist: %s', exc)
-            try:
-                Path(tmp).unlink(missing_ok=True)
-            except OSError:
-                pass
-            return False
-        tmp_path = Path(tmp)
-        try:
-            with self._lock:
-                if not self._ensure():
-                    log.warning('mpv _ensure failed after spawn/wait (socket=%s)', self._socket_path())
-                    return False
-                pl_path = str(tmp_path.resolve())
-                log.debug('mpv loadfile playlist %s (%d media paths)', pl_path, len(paths))
-                resp = self._ipc(['loadfile', pl_path, 'replace'])
-                if not self._ok(resp):
-                    log.warning('mpv loadfile IPC reply: %s (socket=%s)', resp, self._socket_path())
-                    return False
-                log.info('mpv loadfile ok (%d track path(s))', len(paths))
-                return True
-        finally:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        path = Path(m3u_path).resolve()
+        with self._lock:
+            if not self._ensure():
+                return False
+            return self._ok(self._ipc(['loadfile', str(path), 'replace']))
 
     def forward(self) -> bool:
         with self._lock:
@@ -377,56 +204,10 @@ mpv = MpvPlayer()
 
 
 def _play_card_worker(tap_id: str) -> None:
-    _ensure_playback_logging()
-    root = _data_root()
-    log.info('play card tap_id=%r data_root=%s', tap_id, root)
-    card = Card(tap_id)
-    if card.folder is None:
-        log.warning('no card folder for tap_id=%r (invalid id or path outside data root)', tap_id)
+    path = find_m3u_for_tap(tap_id)
+    if path is None:
         return
-    if not card.folder.is_dir():
-        log.warning('card folder missing or not a directory: %s', card.folder)
-        return
-    paths = card.build_queue()
-    if not paths:
-        info = card._load_info()
-        info_json = card.folder / Card._INFO_JSON_NAME
-        if 'tracks' in info and isinstance(info['tracks'], list):
-            log.warning(
-                'empty queue: info.json tracks resolved to zero existing files folder=%s',
-                card.folder,
-            )
-        elif 'tracks' in info:
-            log.warning(
-                'empty queue: tracks key unusable type=%s and folder scan found nothing folder=%s',
-                type(info['tracks']).__name__,
-                card.folder,
-            )
-        else:
-            try:
-                names = [p.name for p in card.folder.iterdir() if p.is_file()]
-            except OSError as exc:
-                names = []
-                log.warning('could not list card folder %s: %s', card.folder, exc)
-            log.warning(
-                'empty queue: folder scan found no audio files folder=%s file_count=%d '
-                'extensions=%s info_json=%s',
-                card.folder,
-                len(names),
-                sorted(Card._AUDIO_EXTENSIONS),
-                info_json.is_file(),
-            )
-            log.debug('folder files (sample): %s', names[:20])
-        return
-    log.info(
-        'starting playback display_name=%r paths=%d first=%s mpv_socket=%s',
-        card.display_name,
-        len(paths),
-        paths[0],
-        mpv._socket_path(),
-    )
-    if not mpv.play_paths(paths):
-        log.warning('mpv.play_paths returned False tap_id=%r paths=%d', tap_id, len(paths))
+    mpv.play(path)
 
 
 def schedule_play_card_for_tap(tap_id: str) -> None:
