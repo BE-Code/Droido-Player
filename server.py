@@ -1,4 +1,4 @@
-from card_playback import audioPlayer
+from audio_player import audioPlayer
 from handlers import SimpleHandler
 from tapped_server import TappedServer
 

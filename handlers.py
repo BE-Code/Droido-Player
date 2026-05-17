@@ -5,7 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-from card_playback import sanitize_tap_id
+from card_playback_service import sanitize_tap_id
 from tapped_server import WAIT_TAP_TIMEOUT_SEC
 
 WEB_ROOT = Path(__file__).resolve().parent / 'web'

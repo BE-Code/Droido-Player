@@ -3,7 +3,7 @@ import threading
 from collections import deque
 from http.server import ThreadingHTTPServer
 
-from card_playback import schedule_play_card_for_tap
+from card_playback_service import schedule_play_card_for_tap
 
 WAIT_TAP_TIMEOUT_SEC = 120.0
 
