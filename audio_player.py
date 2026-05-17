@@ -144,7 +144,11 @@ class MpvPlayer(AudioPlayer):
         with self._lock:
             if not self._ensure():
                 return False
-            return self._ok(self._ipc(['loadfile', str(path), 'replace']))
+            # --keep-open=yes pauses on EOF for the last playlist entry; a later
+            # loadfile can replace the playlist but leave pause=yes, so nothing plays.
+            if not self._ok(self._ipc(['loadfile', str(path), 'replace'])):
+                return False
+            return self._ok(self._ipc(['set_property', 'pause', False]))
 
     def forward(self) -> bool:
         with self._lock:
