@@ -63,7 +63,8 @@
   var volumeSaveTimer = null;
   var playbackPollTimer = null;
   var playbackActive = false;
-  var playbackPaused = true;
+  var playbackPaused = false;
+  var playbackStopped = true;
 
   function setStatus(el, text, kind) {
     el.textContent = text || '';
@@ -330,25 +331,24 @@
   function updatePlaybackTransportUi() {
     var playing = playbackActive && !playbackPaused;
     playbackPlayPauseBtn.classList.toggle('is-playing', playing);
-    playbackStopBtn.disabled = !playbackActive;
+    playbackStopBtn.disabled = playbackStopped;
     if (playing) {
       playbackPlayPauseBtn.title = 'Pause';
       playbackPlayPauseBtn.setAttribute('aria-label', 'Pause');
-      playbackPlayPauseBtn.disabled = false;
-    } else if (playbackActive) {
+    } else if (playbackActive && playbackPaused) {
       playbackPlayPauseBtn.title = 'Resume';
       playbackPlayPauseBtn.setAttribute('aria-label', 'Resume');
-      playbackPlayPauseBtn.disabled = false;
     } else {
-      playbackPlayPauseBtn.title = 'Resume';
-      playbackPlayPauseBtn.setAttribute('aria-label', 'Resume');
-      playbackPlayPauseBtn.disabled = true;
+      playbackPlayPauseBtn.title = 'Play';
+      playbackPlayPauseBtn.setAttribute('aria-label', 'Play');
     }
+    playbackPlayPauseBtn.disabled = false;
   }
 
   function applyPlaybackState(data) {
-    playbackActive = !!(data && data.active);
-    playbackPaused = !playbackActive || !!(data && data.paused);
+    playbackStopped = !data || !data.active || !!data.stopped;
+    playbackActive = !!(data && data.active && !data.stopped);
+    playbackPaused = playbackActive && !!(data && data.paused);
     updatePlaybackTransportUi();
   }
 
@@ -363,7 +363,8 @@
       .then(applyPlaybackState)
       .catch(function () {
         playbackActive = false;
-        playbackPaused = true;
+        playbackPaused = false;
+        playbackStopped = true;
         updatePlaybackTransportUi();
       });
   }
@@ -393,9 +394,6 @@
           throw new Error('play failed');
         }
         setStatus(editorStatus, 'Playing card…', 'live');
-        playbackActive = true;
-        playbackPaused = false;
-        updatePlaybackTransportUi();
         startPlaybackPoll();
         return refreshPlaybackState();
       })
@@ -420,10 +418,7 @@
   }
 
   function togglePlayPause() {
-    if (!playbackActive) {
-      return;
-    }
-    if (!playbackPaused) {
+    if (playbackActive && !playbackPaused) {
       postPlayback('/api/pause')
         .then(function () {
           setStatus(playbackStatus, 'Paused', 'muted');
@@ -433,13 +428,21 @@
         });
       return;
     }
-    postPlayback('/api/resume')
+    if (playbackActive && playbackPaused) {
+      postPlayback('/api/resume')
+        .then(function () {
+          setStatus(playbackStatus, 'Playing…', 'live');
+        })
+        .catch(function (err) {
+          setStatus(playbackStatus, err.message || 'Resume failed', 'dead');
+        });
+      return;
+    }
+    playCard()
       .then(function () {
         setStatus(playbackStatus, 'Playing…', 'live');
       })
-      .catch(function (err) {
-        setStatus(playbackStatus, err.message || 'Resume failed', 'dead');
-      });
+      .catch(function () {});
   }
 
   cardSelect.addEventListener('change', function () {

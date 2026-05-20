@@ -23,6 +23,10 @@ class AudioPlayer:
         """Return pause state, or None if player is not active."""
         return None
 
+    def get_playback_state(self) -> dict:
+        """Return active, paused, and stopped flags for the UI."""
+        return {'active': False, 'paused': False, 'stopped': True}
+
     def set_pause(self, paused: bool) -> bool:
         """Set pause on/off."""
         return False
@@ -166,6 +170,29 @@ class MpvPlayer(AudioPlayer):
             if not self._ok(msg):
                 return None
             return bool(msg.get('data'))
+
+    def _playlist_count(self) -> int | None:
+        if not self._alive():
+            return None
+        msg = self._ipc(['get_property', 'playlist-count'], timeout_sec=0.5)
+        if not self._ok(msg):
+            return None
+        try:
+            return int(msg.get('data', 0))
+        except (TypeError, ValueError):
+            return None
+
+    def get_playback_state(self) -> dict:
+        with self._lock:
+            if not self._alive():
+                return {'active': False, 'paused': False, 'stopped': True}
+            msg = self._ipc(['get_property', 'pause'], timeout_sec=0.5)
+            if not self._ok(msg):
+                return {'active': False, 'paused': False, 'stopped': True}
+            paused = bool(msg.get('data'))
+            count = self._playlist_count()
+            stopped = count is None or count < 1
+            return {'active': True, 'paused': paused, 'stopped': stopped}
 
     def set_pause(self, paused: bool) -> bool:
         with self._lock:

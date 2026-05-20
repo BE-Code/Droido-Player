@@ -116,8 +116,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/playback':
-            paused = audioPlayer.get_pause()
-            self._send_json(200, {'active': paused is not None, 'paused': paused})
+            self._send_json(200, audioPlayer.get_playback_state())
             return
 
         card_id = self._api_card_id(path_parts)
