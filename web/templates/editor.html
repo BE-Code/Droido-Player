@@ -49,12 +49,22 @@
     <div class="modal-card" role="dialog" aria-labelledby="add-audio-title">
       <h2 id="add-audio-title">Add audio</h2>
       <div id="add-audio-choice">
-        <p class="muted">Record a new clip or choose files from this device.</p>
+        <p class="muted">Record a clip, choose files, or paste a video/audio page URL (requires <code>yt-dlp</code> on the device).</p>
         <div class="add-audio-options">
           <button type="button" id="record-option-btn">Record</button>
           <button type="button" id="upload-option-btn" class="secondary">Upload file</button>
+          <button type="button" id="url-option-btn" class="secondary">From URL</button>
         </div>
         <button type="button" id="add-audio-cancel-btn" class="secondary add-audio-cancel">Cancel</button>
+      </div>
+      <div id="add-audio-url" hidden>
+        <label for="audio-url-input">Page or media URL</label>
+        <input type="url" id="audio-url-input" placeholder="https://…" autocomplete="off" inputmode="url">
+        <p id="url-fetch-status" class="muted" hidden></p>
+        <div class="toolbar add-audio-url-actions">
+          <button type="button" id="url-fetch-btn">Download</button>
+          <button type="button" id="url-back-btn" class="secondary">Back</button>
+        </div>
       </div>
       <div id="add-audio-record" hidden>
         <p id="record-status" class="muted">Tap Start, then speak. Tap Stop when finished.</p>

@@ -1,9 +1,11 @@
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from audio_normalize import normalize_audio, normalized_output_path
 from card_playback_service import card_folder, data_root, sanitize_tap_id
@@ -12,6 +14,13 @@ PLAYLIST_NAME = 'playlist.m3u'
 CARD_META_NAME = 'card.json'
 STAGING_DIR_NAME = '.staging'
 ORIGINAL_STAGING_NAME = 'original'
+
+_YTDLP_TIMEOUT_SEC = int(os.environ.get('DROIDO_YTDLP_TIMEOUT', '600'))
+_YTDLP_BIN = (os.environ.get('DROIDO_YT_DLP') or 'yt-dlp').strip() or 'yt-dlp'
+
+_YTDLP_AUDIO_EXTS = frozenset({
+    '.m4a', '.mp3', '.opus', '.ogg', '.webm', '.aac', '.flac', '.wav', '.mka',
+})
 
 _UNSAFE_FILENAME_CHARS = frozenset('\\/:*?"<>|\x00')
 
@@ -225,6 +234,110 @@ def normalized_commit_name(original_name: str) -> str:
     safe = sanitize_filename(original_name) or 'audio'
     p = Path(safe)
     return f'{p.stem}.norm{p.suffix}'
+
+
+def _yt_dlp_executable() -> str | None:
+    exe = _YTDLP_BIN
+    if os.path.isfile(exe) and os.access(exe, os.X_OK):
+        return exe
+    return shutil.which(exe)
+
+
+def _allowed_http_url(url: str) -> bool:
+    u = url.strip()
+    if not u or len(u) > 2048:
+        return False
+    try:
+        parsed = urlparse(u)
+    except ValueError:
+        return False
+    if parsed.scheme not in ('http', 'https'):
+        return False
+    if not parsed.netloc:
+        return False
+    return True
+
+
+def create_staging_from_url(tap_id: str, url: str) -> dict:
+    """Download audio with yt-dlp into a new staging area (same shape as create_staging_upload)."""
+    if not _allowed_http_url(url):
+        return {'error': 'only http(s) URLs up to 2048 chars are allowed'}
+    exe = _yt_dlp_executable()
+    if not exe:
+        return {'error': 'yt-dlp not found; install with pkg install yt-dlp or pip install yt-dlp'}
+    folder = ensure_card_folder(tap_id)
+    if folder is None:
+        return {'error': 'invalid card id'}
+    staging_id = uuid.uuid4().hex
+    staging_dir = _staging_dir(folder, staging_id)
+    if staging_dir is None:
+        return {'error': 'invalid staging id'}
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    out_template = staging_dir / f'{ORIGINAL_STAGING_NAME}.%(ext)s'
+    cmd = [
+        exe,
+        '--no-playlist',
+        '-x',
+        '--audio-format',
+        'm4a',
+        '--no-warnings',
+        '--no-progress',
+        '--no-colors',
+        '--newline',
+        '-o',
+        str(out_template),
+        url.strip(),
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=_YTDLP_TIMEOUT_SEC,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        _discard_staging_dir(staging_dir)
+        return {'error': 'download timed out'}
+    except OSError as e:
+        _discard_staging_dir(staging_dir)
+        return {'error': f'failed to run yt-dlp: {e}'}
+    if proc.returncode != 0:
+        _discard_staging_dir(staging_dir)
+        err = (proc.stderr or proc.stdout or '').strip()
+        if len(err) > 800:
+            err = err[:800] + '…'
+        return {'error': err or 'yt-dlp failed'}
+    candidates: list[Path] = []
+    try:
+        prefix = ORIGINAL_STAGING_NAME + '.'
+        for p in staging_dir.iterdir():
+            if not p.is_file():
+                continue
+            if p.name.endswith('.part'):
+                continue
+            if p.name.lower().startswith(prefix.lower()) and p.suffix.lower() in _YTDLP_AUDIO_EXTS:
+                candidates.append(p)
+    except OSError:
+        pass
+    if not candidates:
+        _discard_staging_dir(staging_dir)
+        return {'error': 'yt-dlp produced no audio file'}
+    chosen = max(candidates, key=lambda p: p.stat().st_size)
+    final_name = chosen.name
+    for p in candidates:
+        if p != chosen:
+            try:
+                p.unlink()
+            except OSError:
+                pass
+    rel = f'{STAGING_DIR_NAME}/{staging_id}/{final_name}'
+    return {
+        'stagingId': staging_id,
+        'originalName': final_name,
+        'originalUrl': audio_url_for_path(tap_id, rel),
+        'normalizedUrl': None,
+    }
 
 
 def create_staging_upload(tap_id: str, original_name: str, data: bytes) -> dict | None:

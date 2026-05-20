@@ -10,6 +10,7 @@ from audio_player import audioPlayer
 from card_playback_service import sanitize_tap_id, schedule_play_card_for_tap
 from cards_store import (
     commit_staging,
+    create_staging_from_url,
     create_staging_upload,
     discard_staging,
     get_card,
@@ -220,6 +221,24 @@ class SimpleHandler(BaseHTTPRequestHandler):
             schedule_play_card_for_tap(card_id)
             self.send_response(204)
             self.end_headers()
+            return
+
+        if len(path_parts) == 5 and path_parts[3] == 'tracks' and path_parts[4] == 'from-url':
+            body = self._read_json_body()
+            if not isinstance(body, dict):
+                self._send_json(400, {'error': 'JSON body required'})
+                return
+            url = body.get('url')
+            if not isinstance(url, str) or not url.strip():
+                self._send_json(400, {'error': 'url required'})
+                return
+            result = create_staging_from_url(card_id, url)
+            if 'error' in result:
+                err = result['error']
+                status = 400 if err.startswith('only http') else 503
+                self._send_json(status, {'error': err})
+                return
+            self._send_json(200, result)
             return
 
         if len(path_parts) == 4 and path_parts[3] == 'tracks':

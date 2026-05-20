@@ -255,6 +255,14 @@ label {
   width: 100%;
 }
 
+#add-audio-url {
+  margin-top: 0.5rem;
+}
+
+#add-audio-url .add-audio-url-actions {
+  margin-top: 0.75rem;
+}
+
 .record-toolbar {
   margin: 0.75rem 0;
 }

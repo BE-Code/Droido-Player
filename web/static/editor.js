@@ -23,6 +23,12 @@
   var recordStartBtn = document.getElementById('record-start-btn');
   var recordStopBtn = document.getElementById('record-stop-btn');
   var recordBackBtn = document.getElementById('record-back-btn');
+  var addAudioUrl = document.getElementById('add-audio-url');
+  var urlOptionBtn = document.getElementById('url-option-btn');
+  var audioUrlInput = document.getElementById('audio-url-input');
+  var urlFetchBtn = document.getElementById('url-fetch-btn');
+  var urlBackBtn = document.getElementById('url-back-btn');
+  var urlFetchStatus = document.getElementById('url-fetch-status');
   var importModal = document.getElementById('import-modal');
   var importQueueLabel = document.getElementById('import-queue-label');
   var importFilename = document.getElementById('import-filename');
@@ -577,6 +583,7 @@
   function showAddAudioChoice() {
     addAudioChoice.hidden = false;
     addAudioRecord.hidden = true;
+    addAudioUrl.hidden = true;
     setStatus(recordStatus, 'Tap Start, then speak. Tap Stop when finished.', 'muted');
     recordStartBtn.hidden = false;
     recordStopBtn.hidden = true;
@@ -586,11 +593,21 @@
   function showAddAudioRecord() {
     addAudioChoice.hidden = true;
     addAudioRecord.hidden = false;
+    addAudioUrl.hidden = true;
     setStatus(recordStatus, 'Tap Start, then speak. Tap Stop when finished.', 'muted');
     recordStartBtn.hidden = false;
     recordStopBtn.hidden = true;
     recordStartBtn.disabled = false;
     recordStopBtn.disabled = false;
+  }
+
+  function showAddAudioUrl() {
+    addAudioChoice.hidden = true;
+    addAudioRecord.hidden = true;
+    addAudioUrl.hidden = false;
+    audioUrlInput.value = '';
+    setStatus(urlFetchStatus, '', 'muted');
+    urlFetchBtn.disabled = false;
   }
 
   function cleanupRecording() {
@@ -663,6 +680,52 @@
     processImportQueue();
   }
 
+  function startUrlImport(url) {
+    var trimmed = (url || '').trim();
+    if (!currentId) {
+      return;
+    }
+    if (!trimmed) {
+      setStatus(urlFetchStatus, 'Enter a URL.', 'dead');
+      return;
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setStatus(urlFetchStatus, 'URL must start with http:// or https://', 'dead');
+      return;
+    }
+    urlFetchBtn.disabled = true;
+    setStatus(urlFetchStatus, 'Downloading with yt-dlp… (may take a while)', 'live');
+    fetch('/api/cards/' + encodeURIComponent(currentId) + '/tracks/from-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: trimmed }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { res: res, data: data };
+        }).catch(function () {
+          return { res: res, data: {} };
+        });
+      })
+      .then(function (x) {
+        urlFetchBtn.disabled = false;
+        if (!x.res.ok) {
+          var msg = (x.data && x.data.error) ? x.data.error : ('HTTP ' + x.res.status);
+          setStatus(urlFetchStatus, msg, 'dead');
+          return;
+        }
+        setStatus(urlFetchStatus, '', 'muted');
+        closeAddAudioModal();
+        importTotal = 1;
+        importQueue = [];
+        openImportModal(x.data, 0, 1);
+      })
+      .catch(function () {
+        urlFetchBtn.disabled = false;
+        setStatus(urlFetchStatus, 'Network error.', 'dead');
+      });
+  }
+
   addAudioBtn.addEventListener('click', openAddAudioModal);
 
   addAudioCancelBtn.addEventListener('click', closeAddAudioModal);
@@ -671,6 +734,21 @@
 
   uploadOptionBtn.addEventListener('click', function () {
     fileInput.click();
+  });
+
+  urlOptionBtn.addEventListener('click', showAddAudioUrl);
+
+  urlBackBtn.addEventListener('click', showAddAudioChoice);
+
+  urlFetchBtn.addEventListener('click', function () {
+    startUrlImport(audioUrlInput.value);
+  });
+
+  audioUrlInput.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      startUrlImport(audioUrlInput.value);
+    }
   });
 
   recordOptionBtn.addEventListener('click', function () {
