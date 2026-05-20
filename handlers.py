@@ -8,7 +8,11 @@ from urllib.parse import unquote, urlparse
 from android_volume import VolumeUnavailable, get_volume, set_volume
 from audio_normalize import ffmpeg_available
 from audio_player import audioPlayer
-from card_playback_service import sanitize_tap_id, schedule_play_card_for_tap
+from card_playback_service import (
+    get_now_playing_tap_id,
+    sanitize_tap_id,
+    schedule_play_card_for_tap,
+)
 from cards_store import (
     commit_staging,
     create_staging_from_url,
@@ -116,7 +120,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/playback':
-            self._send_json(200, audioPlayer.get_playback_state())
+            state = audioPlayer.get_playback_state()
+            card_id = get_now_playing_tap_id()
+            if card_id is not None:
+                state['cardId'] = card_id
+            self._send_json(200, state)
             return
 
         card_id = self._api_card_id(path_parts)

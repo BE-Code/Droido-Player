@@ -65,6 +65,7 @@
   var playbackActive = false;
   var playbackPaused = false;
   var playbackStopped = true;
+  var nowPlayingId = null;
 
   function setStatus(el, text, kind) {
     el.textContent = text || '';
@@ -349,6 +350,9 @@
     playbackStopped = !data || !data.active || !!data.stopped;
     playbackActive = !!(data && data.active && !data.stopped);
     playbackPaused = playbackActive && !!(data && data.paused);
+    if (data && data.cardId) {
+      nowPlayingId = data.cardId;
+    }
     updatePlaybackTransportUi();
   }
 
@@ -376,34 +380,46 @@
     playbackPollTimer = setInterval(refreshPlaybackState, 2000);
   }
 
-  function playCard() {
-    if (!currentId) {
-      setStatus(editorStatus, 'Open a card first', 'dead');
+  function startPlaylist(cardId, statusEl) {
+    if (!cardId) {
+      setStatus(statusEl, 'No playlist to play', 'dead');
       return Promise.reject(new Error('no card'));
     }
-    if (dirty) {
-      setStatus(editorStatus, 'Save first — play uses the saved playlist only', 'dead');
+    if (cardId === currentId && dirty) {
+      setStatus(statusEl, 'Save first — play uses the saved playlist only', 'dead');
       return Promise.reject(new Error('unsaved'));
     }
-    playCardBtn.disabled = true;
-    return fetch('/api/cards/' + encodeURIComponent(currentId) + '/play', {
+    return fetch('/api/cards/' + encodeURIComponent(cardId) + '/play', {
       method: 'POST',
     })
       .then(function (res) {
         if (!res.ok && res.status !== 204) {
           throw new Error('play failed');
         }
-        setStatus(editorStatus, 'Playing card…', 'live');
+        nowPlayingId = cardId;
+        setStatus(statusEl, 'Playing…', 'live');
         startPlaybackPoll();
         return refreshPlaybackState();
       })
       .catch(function () {
-        setStatus(editorStatus, 'Play failed', 'dead');
+        setStatus(statusEl, 'Play failed', 'dead');
         throw new Error('play failed');
-      })
-      .finally(function () {
-        playCardBtn.disabled = false;
       });
+  }
+
+  function playCard() {
+    if (!currentId) {
+      setStatus(editorStatus, 'Open a card first', 'dead');
+      return Promise.reject(new Error('no card'));
+    }
+    playCardBtn.disabled = true;
+    return startPlaylist(currentId, editorStatus).finally(function () {
+      playCardBtn.disabled = false;
+    });
+  }
+
+  function playNowPlaying() {
+    return startPlaylist(nowPlayingId || currentId, playbackStatus);
   }
 
   function postPlayback(path) {
@@ -438,11 +454,7 @@
         });
       return;
     }
-    playCard()
-      .then(function () {
-        setStatus(playbackStatus, 'Playing…', 'live');
-      })
-      .catch(function () {});
+    playNowPlaying().catch(function () {});
   }
 
   cardSelect.addEventListener('change', function () {
