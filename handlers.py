@@ -15,8 +15,10 @@ from card_playback_service import (
 )
 from cards_store import (
     commit_staging,
+    create_staging_from_track,
     create_staging_from_url,
     create_staging_upload,
+    delete_track_file,
     discard_staging,
     get_card,
     list_cards,
@@ -216,6 +218,15 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if len(path_parts) == 5 and path_parts[3] == 'tracks':
+            track_name = unquote(path_parts[4])
+            if not delete_track_file(card_id, track_name):
+                self._send_json(404, {'error': 'track not found'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
         self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')
 
     def do_POST(self):
@@ -304,6 +315,15 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self._send_json(200, result)
             return
 
+        if len(path_parts) == 6 and path_parts[3] == 'tracks' and path_parts[5] == 'edit':
+            track_name = unquote(path_parts[4])
+            result = create_staging_from_track(card_id, track_name)
+            if result is None:
+                self._send_json(404, {'error': 'track not found'})
+                return
+            self._send_json(200, result)
+            return
+
         if len(path_parts) == 4 and path_parts[3] == 'tracks':
             ctype = self.headers.get('Content-Type', '')
             if not ctype.startswith('multipart/form-data'):
@@ -358,11 +378,20 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if file_stem is not None and not isinstance(file_stem, str):
                 self._send_json(400, {'error': 'fileStem must be a string'})
                 return
+            replace_track = body.get('replaceTrack')
+            if replace_track is not None and not isinstance(replace_track, str):
+                self._send_json(400, {'error': 'replaceTrack must be a string'})
+                return
             if choice == 'normalized' and not ffmpeg_available():
                 self._send_json(503, {'error': 'ffmpeg not available'})
                 return
             filename = commit_staging(
-                card_id, staging_id, original_name, choice, file_stem=file_stem
+                card_id,
+                staging_id,
+                original_name,
+                choice,
+                file_stem=file_stem,
+                replace_track=replace_track,
             )
             if filename is None:
                 self._send_json(400, {'error': 'commit failed'})

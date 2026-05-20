@@ -370,6 +370,33 @@ def create_staging_from_url(tap_id: str, url: str) -> dict:
     }
 
 
+def create_staging_from_track(tap_id: str, track_name: str) -> dict | None:
+    """Copy an on-card track into staging for preview, normalize, rename, or replace."""
+    folder = card_folder(tap_id)
+    if folder is None:
+        return None
+    safe = sanitize_filename(track_name)
+    if safe is None:
+        return None
+    src = folder / safe
+    if not src.is_file():
+        return None
+    staging_id = uuid.uuid4().hex
+    staging_dir = _staging_dir(folder, staging_id)
+    if staging_dir is None:
+        return None
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    original_path = _original_staging_file(staging_dir, safe)
+    shutil.copy2(src, original_path)
+    rel = f'{STAGING_DIR_NAME}/{staging_id}/{original_path.name}'
+    return {
+        'stagingId': staging_id,
+        'originalName': safe,
+        'originalUrl': audio_url_for_path(tap_id, rel),
+        'normalizedUrl': None,
+    }
+
+
 def create_staging_upload(tap_id: str, original_name: str, data: bytes) -> dict | None:
     folder = ensure_card_folder(tap_id)
     if folder is None:
@@ -443,6 +470,20 @@ def discard_staging(tap_id: str, staging_id: str) -> bool:
     return True
 
 
+def delete_track_file(tap_id: str, track_name: str) -> bool:
+    folder = card_folder(tap_id)
+    if folder is None:
+        return False
+    safe = sanitize_filename(track_name)
+    if safe is None:
+        return False
+    path = folder / safe
+    if not path.is_file():
+        return False
+    path.unlink()
+    return True
+
+
 def commit_staging(
     tap_id: str,
     staging_id: str,
@@ -450,6 +491,7 @@ def commit_staging(
     choice: str,
     *,
     file_stem: str | None = None,
+    replace_track: str | None = None,
 ) -> str | None:
     if choice not in ('original', 'normalized'):
         return None
@@ -472,8 +514,16 @@ def commit_staging(
     final_basename = _commit_destination_basename(original_name, choice, file_stem)
     if final_basename is None:
         return None
-    final_name = _unique_final_name(folder, final_basename)
+    replace_safe = sanitize_filename(replace_track) if replace_track else None
+    if replace_safe and final_basename == replace_safe:
+        final_name = replace_safe
+    else:
+        final_name = _unique_final_name(folder, final_basename)
     dest = folder / final_name
     shutil.copy2(source, dest)
+    if replace_safe:
+        old_path = folder / replace_safe
+        if old_path.is_file() and old_path.resolve() != dest.resolve():
+            old_path.unlink()
     _discard_staging_dir(staging_dir)
     return final_name

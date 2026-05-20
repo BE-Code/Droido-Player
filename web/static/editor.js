@@ -41,7 +41,9 @@
   var importAudio = document.getElementById('import-audio');
   var importStatus = document.getElementById('import-status');
   var importSaveBtn = document.getElementById('import-save-btn');
+  var importDeleteBtn = document.getElementById('import-delete-btn');
   var importCancelBtn = document.getElementById('import-cancel-btn');
+  var importTitle = document.getElementById('import-title');
   var segmentBtns = importModal.querySelectorAll('.segmented-btn');
   var volumeSlider = document.getElementById('volume-slider');
   var volumeValue = document.getElementById('volume-value');
@@ -53,6 +55,9 @@
   var importQueue = [];
   var importTotal = 0;
   var currentStaging = null;
+  var stagingMode = 'import';
+  var editingTrackName = null;
+  var editingTrackIndex = null;
   var selectedVariant = 'original';
   var normalizedUrl = null;
   var normalizeInFlight = null;
@@ -246,21 +251,18 @@
         moveTrack(index, index + 1);
       });
 
-      var removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'icon-btn danger';
-      removeBtn.textContent = '×';
-      removeBtn.title = 'Remove from playlist';
-      removeBtn.addEventListener('click', function () {
-        tracks.splice(index, 1);
-        missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
-        markDirty();
-        renderTracks();
+      var editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'icon-btn icon-edit';
+      editBtn.title = 'Edit track';
+      editBtn.setAttribute('aria-label', 'Edit track');
+      editBtn.addEventListener('click', function () {
+        openTrackEdit(name, index);
       });
 
       actions.appendChild(upBtn);
       actions.appendChild(downBtn);
-      actions.appendChild(removeBtn);
+      actions.appendChild(editBtn);
       li.appendChild(actions);
 
       li.addEventListener('dragstart', onDragStart);
@@ -616,12 +618,18 @@
     importAudio.pause();
     importAudio.removeAttribute('src');
     currentStaging = null;
+    stagingMode = 'import';
+    editingTrackName = null;
+    editingTrackIndex = null;
     normalizedUrl = null;
     selectedVariant = 'original';
     normalizeInFlight = null;
     updateSegmentUi();
     setImportStatus('', 'muted');
     importSaveBtn.disabled = false;
+    importDeleteBtn.hidden = true;
+    importTitle.textContent = 'Import audio';
+    importSaveBtn.textContent = 'Save to card';
     segmentBtns.forEach(function (btn) { btn.disabled = false; });
   }
 
@@ -681,7 +689,12 @@
     return { stem: name.slice(0, i), ext: name.slice(i) };
   }
 
-  function openImportModal(staging, queueIndex, queueTotal) {
+  function openImportModal(staging, queueIndex, queueTotal, mode) {
+    stagingMode = mode || 'import';
+    if (stagingMode !== 'edit') {
+      editingTrackName = null;
+      editingTrackIndex = null;
+    }
     currentStaging = staging;
     selectedVariant = 'original';
     normalizedUrl = staging.normalizedUrl || null;
@@ -703,6 +716,42 @@
     importModal.hidden = false;
     setImportStatus('', 'muted');
     importSaveBtn.disabled = false;
+    if (stagingMode === 'edit') {
+      importTitle.textContent = 'Edit track';
+      importSaveBtn.textContent = 'Save changes';
+      importDeleteBtn.hidden = false;
+    } else {
+      importTitle.textContent = 'Import audio';
+      importSaveBtn.textContent = 'Save to card';
+      importDeleteBtn.hidden = true;
+    }
+  }
+
+  function openTrackEdit(trackName, trackIndex) {
+    if (!currentId) {
+      return;
+    }
+    setStatus(editorStatus, 'Loading track…', 'live');
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/tracks/' + encodeURIComponent(trackName) + '/edit',
+      { method: 'POST' }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('edit failed');
+        }
+        return res.json();
+      })
+      .then(function (staging) {
+        setStatus(editorStatus, '', 'muted');
+        editingTrackName = trackName;
+        editingTrackIndex = trackIndex;
+        openImportModal(staging, 0, 1, 'edit');
+      })
+      .catch(function () {
+        setStatus(editorStatus, 'Could not open track for editing', 'dead');
+      });
   }
 
   function processImportQueue() {
@@ -795,17 +844,21 @@
     importSaveBtn.disabled = true;
     importCancelBtn.disabled = true;
     setImportStatus('Saving…', 'live');
+    var commitBody = {
+      choice: selectedVariant,
+      originalName: currentStaging.originalName,
+      fileStem: importFileStem.value,
+    };
+    if (stagingMode === 'edit' && editingTrackName) {
+      commitBody.replaceTrack = editingTrackName;
+    }
     fetch(
       '/api/cards/' + encodeURIComponent(currentId) +
         '/staging/' + encodeURIComponent(currentStaging.stagingId) + '/commit',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          choice: selectedVariant,
-          originalName: currentStaging.originalName,
-          fileStem: importFileStem.value,
-        }),
+        body: JSON.stringify(commitBody),
       }
     )
       .then(function (res) {
@@ -815,13 +868,23 @@
         return res.json();
       })
       .then(function (data) {
-        if (tracks.indexOf(data.filename) < 0) {
+        if (stagingMode === 'edit' && editingTrackIndex !== null) {
+          tracks[editingTrackIndex] = data.filename;
+          missing = missing.filter(function (m) {
+            return m !== editingTrackName && tracks.indexOf(m) >= 0;
+          });
+        } else if (tracks.indexOf(data.filename) < 0) {
           tracks.push(data.filename);
         }
         markDirty();
         renderTracks();
-        finishImportAndNext();
-        importCancelBtn.disabled = false;
+        if (stagingMode === 'edit') {
+          closeImportModal();
+          importCancelBtn.disabled = false;
+        } else {
+          finishImportAndNext();
+          importCancelBtn.disabled = false;
+        }
       })
       .catch(function () {
         setImportStatus('Save failed', 'dead');
@@ -833,15 +896,74 @@
   importCancelBtn.addEventListener('click', function () {
     if (!currentStaging) {
       closeImportModal();
-      processImportQueue();
+      if (stagingMode !== 'edit') {
+        processImportQueue();
+      }
       return;
     }
     var stagingId = currentStaging.stagingId;
+    var wasEdit = stagingMode === 'edit';
     importCancelBtn.disabled = true;
     discardStaging(stagingId).finally(function () {
-      finishImportAndNext();
+      if (wasEdit) {
+        closeImportModal();
+      } else {
+        finishImportAndNext();
+      }
       importCancelBtn.disabled = false;
     });
+  });
+
+  importDeleteBtn.addEventListener('click', function () {
+    if (stagingMode !== 'edit' || !editingTrackName || !currentId) {
+      return;
+    }
+    if (!window.confirm('Delete this track file? It will be removed from the playlist.')) {
+      return;
+    }
+    var trackName = editingTrackName;
+    var trackIndex = editingTrackIndex;
+    var stagingId = currentStaging ? currentStaging.stagingId : null;
+    importDeleteBtn.disabled = true;
+    importSaveBtn.disabled = true;
+    importCancelBtn.disabled = true;
+    setImportStatus('Deleting…', 'live');
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/tracks/' + encodeURIComponent(trackName),
+      { method: 'DELETE' }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('delete failed');
+        }
+        if (trackIndex !== null && trackIndex >= 0 && trackIndex < tracks.length) {
+          tracks.splice(trackIndex, 1);
+        } else {
+          var i = tracks.indexOf(trackName);
+          if (i >= 0) {
+            tracks.splice(i, 1);
+          }
+        }
+        missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
+        markDirty();
+        renderTracks();
+        if (stagingId) {
+          return discardStaging(stagingId);
+        }
+      })
+      .then(function () {
+        closeImportModal();
+        setStatus(editorStatus, 'Track deleted — save playlist when ready', 'muted');
+      })
+      .catch(function () {
+        setImportStatus('Delete failed', 'dead');
+      })
+      .finally(function () {
+        importDeleteBtn.disabled = false;
+        importSaveBtn.disabled = false;
+        importCancelBtn.disabled = false;
+      });
   });
 
   window.addEventListener('beforeunload', function () {
