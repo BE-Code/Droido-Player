@@ -298,18 +298,32 @@
         moveTrack(index, index + 1);
       });
 
-      var editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'icon-btn icon-edit';
-      editBtn.title = 'Edit track';
-      editBtn.setAttribute('aria-label', 'Edit track');
-      editBtn.addEventListener('click', function () {
-        openTrackEdit(name, index);
-      });
-
       actions.appendChild(upBtn);
       actions.appendChild(downBtn);
-      actions.appendChild(editBtn);
+
+      var isMissing = missing.indexOf(name) >= 0;
+      if (isMissing) {
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'icon-btn danger';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove from playlist';
+        removeBtn.setAttribute('aria-label', 'Remove from playlist');
+        removeBtn.addEventListener('click', function () {
+          removeTrackFromPlaylist(name, index);
+        });
+        actions.appendChild(removeBtn);
+      } else {
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'icon-btn icon-edit';
+        editBtn.title = 'Edit track';
+        editBtn.setAttribute('aria-label', 'Edit track');
+        editBtn.addEventListener('click', function () {
+          openTrackEdit(name, index);
+        });
+        actions.appendChild(editBtn);
+      }
       li.appendChild(actions);
 
       li.addEventListener('dragstart', onDragStart);
@@ -355,6 +369,43 @@
     tracks.splice(to, 0, item);
     queueSave();
     renderTracks();
+  }
+
+  function removeTrackFromPlaylist(trackName, trackIndex) {
+    if (!currentId) {
+      return;
+    }
+    var isMissing = missing.indexOf(trackName) >= 0;
+    var msg = isMissing
+      ? 'Remove this missing track from the playlist?'
+      : 'Delete this track file? It will be removed from the playlist.';
+    if (!window.confirm(msg)) {
+      return;
+    }
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/tracks/' + encodeURIComponent(trackName),
+      { method: 'DELETE' }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('delete failed');
+        }
+        if (trackIndex !== null && trackIndex >= 0 && trackIndex < tracks.length) {
+          tracks.splice(trackIndex, 1);
+        } else {
+          var i = tracks.indexOf(trackName);
+          if (i >= 0) {
+            tracks.splice(i, 1);
+          }
+        }
+        missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
+        renderTracks();
+        return flushSave();
+      })
+      .catch(function () {
+        setStatus(editorStatus, 'Could not remove track', 'dead');
+      });
   }
 
   function openCard(id) {

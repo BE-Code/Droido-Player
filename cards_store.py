@@ -507,6 +507,7 @@ def discard_staging(tap_id: str, staging_id: str) -> bool:
 
 
 def delete_track_file(tap_id: str, track_name: str) -> bool:
+    """Remove track file from card folder if present; succeeds when already missing."""
     folder = card_folder(tap_id)
     if folder is None:
         return False
@@ -514,9 +515,8 @@ def delete_track_file(tap_id: str, track_name: str) -> bool:
     if safe is None:
         return False
     path = folder / safe
-    if not path.is_file():
-        return False
-    path.unlink()
+    if path.is_file():
+        path.unlink()
     return True
 
 
