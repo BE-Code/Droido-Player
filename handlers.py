@@ -28,7 +28,7 @@ from cards_store import (
     validate_file_stem,
 )
 from multipart import parse_file_uploads
-from tapped_server import WAIT_TAP_TIMEOUT_SEC
+from tapped_server import WAIT_TAP_TIMEOUT_SEC, _CANCEL_SENTINEL
 
 WEB_ROOT = Path(__file__).resolve().parent / 'web'
 STATIC_ROOT = WEB_ROOT / 'static'
@@ -162,6 +162,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
             finally:
                 self.server.unregister_waiter(q)
 
+            if tap_id is _CANCEL_SENTINEL:
+                self._send_json(499, {'error': 'cancelled'})
+                return
+
             self._send_json(200, {'id': tap_id})
             return
 
@@ -232,6 +236,17 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path_parts = self._path_parts()
+
+        if (
+            len(path_parts) == 3
+            and path_parts[0] == 'api'
+            and path_parts[1] == 'wait-tap'
+            and path_parts[2] == 'cancel'
+        ):
+            self.server.cancel_waiting()
+            self.send_response(204)
+            self.end_headers()
+            return
 
         if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'stop':
             audioPlayer.stop()

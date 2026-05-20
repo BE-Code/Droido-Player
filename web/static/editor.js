@@ -676,11 +676,46 @@
     });
   });
 
-  scanBtn.addEventListener('click', function () {
-    scanBtn.disabled = true;
+  var scanActive = false;
+  var scanAbort = null;
+
+  function setScanIdle() {
+    scanActive = false;
+    scanAbort = null;
+    scanBtn.disabled = false;
+    scanBtn.textContent = 'Scan NFC';
+    scanBtn.classList.remove('secondary');
+  }
+
+  function setScanWaiting() {
+    scanActive = true;
+    scanAbort = new AbortController();
+    scanBtn.disabled = false;
+    scanBtn.textContent = 'Cancel';
+    scanBtn.classList.add('secondary');
     setStatus(scanStatus, 'Waiting for tap…', 'live');
-    fetch('/wait-tap')
+  }
+
+  function cancelScan() {
+    fetch('/api/wait-tap/cancel', { method: 'POST' }).catch(function () {
+      if (scanAbort) {
+        scanAbort.abort();
+      }
+    });
+  }
+
+  scanBtn.addEventListener('click', function () {
+    if (scanActive) {
+      cancelScan();
+      return;
+    }
+    setScanWaiting();
+    fetch('/wait-tap', { signal: scanAbort.signal })
       .then(function (res) {
+        if (res.status === 499) {
+          setStatus(scanStatus, 'Cancelled', 'muted');
+          return null;
+        }
         if (res.status === 408) {
           setStatus(scanStatus, 'Timed out', 'dead');
           return null;
@@ -702,12 +737,14 @@
           return openCard(data.id);
         });
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') {
+          setStatus(scanStatus, 'Cancelled', 'muted');
+          return;
+        }
         setStatus(scanStatus, 'Network error', 'dead');
       })
-      .finally(function () {
-        scanBtn.disabled = false;
-      });
+      .finally(setScanIdle);
   });
 
   cardTitleEl.addEventListener('input', function () {
