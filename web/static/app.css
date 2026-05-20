@@ -316,13 +316,16 @@ label {
 }
 
 .playback-btn {
-  min-width: 2.75rem;
-  min-height: 2.75rem;
+  width: 3.35rem;
+  height: 3.35rem;
+  min-width: 3.35rem;
+  min-height: 3.35rem;
   padding: 0;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   line-height: 1;
   background: var(--white);
   border-color: var(--border);
+  border-width: 2px;
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
@@ -330,18 +333,9 @@ label {
 }
 
 .playback-btn-primary {
-  width: 4rem;
-  height: 4rem;
-  min-width: 4rem;
-  min-height: 4rem;
-  margin: 0 0.35rem;
-  padding: 0;
-  font-size: 1.35rem;
-  border-radius: 50%;
   background: var(--play);
   color: var(--white);
   border-color: var(--play-deep);
-  border-width: 3px;
   box-shadow: 0 4px 0 var(--play-deep), 0 6px 16px var(--play-glow);
 }
 
@@ -410,11 +404,9 @@ label {
 .playback-status {
   width: 100%;
   margin: 0;
-  padding-top: 0.15rem;
   text-align: center;
   font-weight: 700;
-  font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .playback-status[hidden] {

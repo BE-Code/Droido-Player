@@ -73,6 +73,14 @@
     el.hidden = !text;
   }
 
+  function setPlaybackError(text) {
+    setStatus(playbackStatus, text, 'dead');
+  }
+
+  function clearPlaybackStatus() {
+    setStatus(playbackStatus, '', 'muted');
+  }
+
   function formatVolume(level) {
     return Math.round(level) + '%';
   }
@@ -382,11 +390,19 @@
 
   function startPlaylist(cardId, statusEl) {
     if (!cardId) {
-      setStatus(statusEl, 'No playlist to play', 'dead');
+      if (statusEl === playbackStatus) {
+        setPlaybackError('No playlist to play');
+      } else {
+        setStatus(statusEl, 'No playlist to play', 'dead');
+      }
       return Promise.reject(new Error('no card'));
     }
     if (cardId === currentId && dirty) {
-      setStatus(statusEl, 'Save first — play uses the saved playlist only', 'dead');
+      if (statusEl === playbackStatus) {
+        setPlaybackError('Save first — play uses the saved playlist only');
+      } else {
+        setStatus(statusEl, 'Save first — play uses the saved playlist only', 'dead');
+      }
       return Promise.reject(new Error('unsaved'));
     }
     return fetch('/api/cards/' + encodeURIComponent(cardId) + '/play', {
@@ -397,12 +413,20 @@
           throw new Error('play failed');
         }
         nowPlayingId = cardId;
-        setStatus(statusEl, 'Playing…', 'live');
+        if (statusEl === playbackStatus) {
+          clearPlaybackStatus();
+        } else {
+          setStatus(statusEl, 'Playing…', 'live');
+        }
         startPlaybackPoll();
         return refreshPlaybackState();
       })
       .catch(function () {
-        setStatus(statusEl, 'Play failed', 'dead');
+        if (statusEl === playbackStatus) {
+          setPlaybackError('Play failed');
+        } else {
+          setStatus(statusEl, 'Play failed', 'dead');
+        }
         throw new Error('play failed');
       });
   }
@@ -436,21 +460,17 @@
   function togglePlayPause() {
     if (playbackActive && !playbackPaused) {
       postPlayback('/api/pause')
-        .then(function () {
-          setStatus(playbackStatus, 'Paused', 'muted');
-        })
+        .then(clearPlaybackStatus)
         .catch(function (err) {
-          setStatus(playbackStatus, err.message || 'Pause failed', 'dead');
+          setPlaybackError(err.message || 'Pause failed');
         });
       return;
     }
     if (playbackActive && playbackPaused) {
       postPlayback('/api/resume')
-        .then(function () {
-          setStatus(playbackStatus, 'Playing…', 'live');
-        })
+        .then(clearPlaybackStatus)
         .catch(function (err) {
-          setStatus(playbackStatus, err.message || 'Resume failed', 'dead');
+          setPlaybackError(err.message || 'Resume failed');
         });
       return;
     }
@@ -510,21 +530,17 @@
 
   playbackBackBtn.addEventListener('click', function () {
     postPlayback('/api/back')
-      .then(function () {
-        setStatus(playbackStatus, 'Previous track', 'muted');
-      })
+      .then(clearPlaybackStatus)
       .catch(function (err) {
-        setStatus(playbackStatus, err.message || 'Skip back failed', 'dead');
+        setPlaybackError(err.message || 'Skip back failed');
       });
   });
 
   playbackForwardBtn.addEventListener('click', function () {
     postPlayback('/api/forward')
-      .then(function () {
-        setStatus(playbackStatus, 'Next track', 'muted');
-      })
+      .then(clearPlaybackStatus)
       .catch(function (err) {
-        setStatus(playbackStatus, err.message || 'Skip forward failed', 'dead');
+        setPlaybackError(err.message || 'Skip forward failed');
       });
   });
 
@@ -532,11 +548,9 @@
 
   playbackStopBtn.addEventListener('click', function () {
     postPlayback('/api/stop')
-      .then(function () {
-        setStatus(playbackStatus, 'Stopped', 'muted');
-      })
+      .then(clearPlaybackStatus)
       .catch(function (err) {
-        setStatus(playbackStatus, err.message || 'Stop failed', 'dead');
+        setPlaybackError(err.message || 'Stop failed');
       });
   });
 
