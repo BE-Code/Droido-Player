@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from android_volume import VolumeUnavailable, get_volume, set_volume
 from audio_normalize import ffmpeg_available
 from audio_player import audioPlayer
 from card_playback_service import sanitize_tap_id, schedule_play_card_for_tap
@@ -108,7 +109,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
             return
 
         if path == '/api/volume':
-            self._send_json(200, {'volume': audioPlayer.get_volume()})
+            try:
+                self._send_json(200, {'volume': get_volume()})
+            except VolumeUnavailable as exc:
+                self._send_json(503, {'error': str(exc)})
             return
 
         card_id = self._api_card_id(path_parts)
@@ -220,10 +224,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if not isinstance(raw, (int, float)):
                 self._send_json(400, {'error': 'volume must be a number'})
                 return
-            if not audioPlayer.set_volume(raw):
+            if not set_volume(raw):
                 self._send_json(503, {'error': 'could not set volume'})
                 return
-            self._send_json(200, {'volume': audioPlayer.get_volume()})
+            try:
+                self._send_json(200, {'volume': get_volume()})
+            except VolumeUnavailable as exc:
+                self._send_json(503, {'error': str(exc)})
             return
 
         card_id = self._api_card_id(path_parts)

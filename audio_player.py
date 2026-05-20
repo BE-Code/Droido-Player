@@ -27,14 +27,6 @@ class AudioPlayer:
         """Skip back one track."""
         return False
 
-    def get_volume(self) -> float:
-        """Playback volume 0–100."""
-        return 100.0
-
-    def set_volume(self, volume: float) -> bool:
-        """Set playback volume 0–100."""
-        return False
-
 
 class MpvPlayer(AudioPlayer):
     """One idle mpv with JSON IPC; `play` replaces the playlist."""
@@ -42,7 +34,6 @@ class MpvPlayer(AudioPlayer):
     def __init__(self, ipc_socket: Path | str | None = None) -> None:
         self._ipc_socket = Path(ipc_socket).expanduser().resolve() if ipc_socket else None
         self._lock = threading.Lock()
-        self._volume = 100.0
 
     def _socket_path(self) -> Path:
         if self._ipc_socket is not None:
@@ -66,10 +57,6 @@ class MpvPlayer(AudioPlayer):
     @staticmethod
     def _ok(resp: dict | None) -> bool:
         return resp is not None and resp.get('error') == 'success'
-
-    @staticmethod
-    def _clamp_volume(volume: float) -> float:
-        return max(0.0, min(100.0, float(volume)))
 
     def _ipc(self, command: list, timeout_sec: float = 5.0) -> dict | None:
         sock_path = self._socket_path()
@@ -161,8 +148,6 @@ class MpvPlayer(AudioPlayer):
             # loadfile can replace the playlist but leave pause=yes, so nothing plays.
             if not self._ok(self._ipc(['loadfile', str(path), 'replace'])):
                 return False
-            if not self._ok(self._ipc(['set_property', 'volume', self._volume])):
-                return False
             return self._ok(self._ipc(['set_property', 'pause', False]))
 
     def forward(self) -> bool:
@@ -185,24 +170,6 @@ class MpvPlayer(AudioPlayer):
             cleared = self._ok(self._ipc(['playlist-clear']))
             stopped = self._ok(self._ipc(['stop']))
             return cleared and stopped
-
-    def get_volume(self) -> float:
-        with self._lock:
-            if self._alive():
-                resp = self._ipc(['get_property', 'volume'], timeout_sec=0.5)
-                if self._ok(resp):
-                    data = resp.get('data')
-                    if isinstance(data, (int, float)):
-                        self._volume = self._clamp_volume(data)
-            return self._volume
-
-    def set_volume(self, volume: float) -> bool:
-        level = self._clamp_volume(volume)
-        with self._lock:
-            self._volume = level
-            if not self._alive():
-                return True
-            return self._ok(self._ipc(['set_property', 'volume', level]))
 
 
 audioPlayer = MpvPlayer()
