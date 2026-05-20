@@ -24,7 +24,6 @@ from tapped_server import WAIT_TAP_TIMEOUT_SEC
 
 WEB_ROOT = Path(__file__).resolve().parent / 'web'
 STATIC_ROOT = WEB_ROOT / 'static'
-TEMPLATE_INDEX = WEB_ROOT / 'templates' / 'index.html'
 TEMPLATE_EDITOR = WEB_ROOT / 'templates' / 'editor.html'
 
 
@@ -101,10 +100,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
         path_parts = parsed.path.strip('/').split('/')
 
         if path == '/':
-            self._send_html(TEMPLATE_INDEX)
-            return
-
-        if path == '/editor':
             self._send_html(TEMPLATE_EDITOR)
             return
 
