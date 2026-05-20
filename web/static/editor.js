@@ -267,7 +267,6 @@
       if (missing.indexOf(name) >= 0) {
         li.classList.add('missing');
       }
-      li.draggable = true;
       li.dataset.index = String(index);
 
       var dragHandle = document.createElement('span');
@@ -312,51 +311,12 @@
       }
       li.appendChild(actions);
 
-      li.addEventListener('dragstart', onDragStart);
-      li.addEventListener('dragenter', onDragEnter);
-      li.addEventListener('dragleave', onDragLeave);
-      li.addEventListener('dragover', onDragOver);
-      li.addEventListener('drop', onDrop);
-      li.addEventListener('dragend', onDragEnd);
-
       trackList.appendChild(li);
     });
   }
 
-  var dragFrom = null;
-
-  function onDragStart(e) {
-    if (!e.target.closest('.track-drag-handle')) {
-      e.preventDefault();
-      return;
-    }
-    dragFrom = Number(e.currentTarget.dataset.index);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(dragFrom));
-    e.currentTarget.classList.add('dragging');
-  }
-
-  function onDragEnter(e) {
-    e.preventDefault();
-    if (dragFrom === null) {
-      return;
-    }
-    var to = Number(e.currentTarget.dataset.index);
-    if (to !== dragFrom) {
-      e.currentTarget.classList.add('drag-over');
-    }
-  }
-
-  function onDragLeave(e) {
-    if (!e.currentTarget.contains(e.relatedTarget)) {
-      e.currentTarget.classList.remove('drag-over');
-    }
-  }
-
-  function onDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  }
+  var POINTER_DRAG_THRESHOLD = 8;
+  var pointerDrag = null;
 
   function clearDragOver() {
     trackList.querySelectorAll('.drag-over').forEach(function (el) {
@@ -364,21 +324,114 @@
     });
   }
 
-  function onDrop(e) {
-    e.preventDefault();
-    clearDragOver();
-    var to = Number(e.currentTarget.dataset.index);
-    if (dragFrom === null || dragFrom === to) {
-      return;
+  function findTrackItemAtPoint(x, y) {
+    var els = document.elementsFromPoint(x, y);
+    for (var i = 0; i < els.length; i++) {
+      var li = els[i].closest && els[i].closest('.track-item');
+      if (li && trackList.contains(li) && !li.classList.contains('dragging')) {
+        return li;
+      }
     }
-    moveTrack(dragFrom, to);
-    dragFrom = null;
+    return null;
   }
 
-  function onDragEnd(e) {
-    e.currentTarget.classList.remove('dragging');
+  function endPointerDrag(commit) {
+    if (!pointerDrag) {
+      return;
+    }
+    var from = pointerDrag.from;
+    var to = pointerDrag.over;
+    var item = pointerDrag.item;
+    pointerDrag = null;
+    document.body.classList.remove('track-reorder-active');
+    if (commit && to !== null && to !== from) {
+      moveTrack(from, to);
+      return;
+    }
+    item.classList.remove('dragging');
     clearDragOver();
-    dragFrom = null;
+  }
+
+  function onTrackPointerMove(e) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) {
+      return;
+    }
+    var dx = e.clientX - pointerDrag.startX;
+    var dy = e.clientY - pointerDrag.startY;
+    if (!pointerDrag.started) {
+      if (Math.abs(dx) + Math.abs(dy) < POINTER_DRAG_THRESHOLD) {
+        return;
+      }
+      pointerDrag.started = true;
+      pointerDrag.item.classList.add('dragging');
+      document.body.classList.add('track-reorder-active');
+    }
+    e.preventDefault();
+    var over = findTrackItemAtPoint(e.clientX, e.clientY);
+    clearDragOver();
+    if (over) {
+      var idx = Number(over.dataset.index);
+      if (idx !== pointerDrag.from) {
+        over.classList.add('drag-over');
+        pointerDrag.over = idx;
+      } else {
+        pointerDrag.over = null;
+      }
+    } else {
+      pointerDrag.over = null;
+    }
+  }
+
+  function onTrackPointerUp(e) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) {
+      return;
+    }
+    var commit = pointerDrag.started;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {
+      /* already released */
+    }
+    e.currentTarget.removeEventListener('pointermove', onTrackPointerMove);
+    e.currentTarget.removeEventListener('pointerup', onTrackPointerUp);
+    e.currentTarget.removeEventListener('pointercancel', onTrackPointerUp);
+    endPointerDrag(commit);
+  }
+
+  function onTrackPointerDown(e) {
+    if (e.button !== 0) {
+      return;
+    }
+    var handle = e.target.closest('.track-drag-handle');
+    if (!handle || !trackList.contains(handle)) {
+      return;
+    }
+    var li = handle.closest('.track-item');
+    if (!li) {
+      return;
+    }
+    pointerDrag = {
+      from: Number(li.dataset.index),
+      item: li,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      started: false,
+      over: null
+    };
+    handle.setPointerCapture(e.pointerId);
+    handle.addEventListener('pointermove', onTrackPointerMove, { passive: false });
+    handle.addEventListener('pointerup', onTrackPointerUp);
+    handle.addEventListener('pointercancel', onTrackPointerUp);
+    e.preventDefault();
+  }
+
+  function setupTrackListPointerReorder() {
+    if (trackList.dataset.pointerReorderBound) {
+      return;
+    }
+    trackList.dataset.pointerReorderBound = '1';
+    trackList.addEventListener('pointerdown', onTrackPointerDown);
   }
 
   function moveTrack(from, to) {
@@ -1399,6 +1452,7 @@
   });
 
   trackList.setAttribute('aria-label', 'Tracks, drag to reorder');
+  setupTrackListPointerReorder();
 
   refreshCardList();
   loadVolume();

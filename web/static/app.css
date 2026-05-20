@@ -603,7 +603,8 @@ label {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
   padding: 0.2rem 0;
   font-size: 1.1rem;
   line-height: 1;
@@ -623,6 +624,15 @@ label {
 
 .track-drag-handle:active {
   cursor: grabbing;
+}
+
+body.track-reorder-active {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body.track-reorder-active .track-list {
+  touch-action: none;
 }
 
 .track-name {
