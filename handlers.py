@@ -1,4 +1,3 @@
-import cgi
 import json
 import mimetypes
 import queue
@@ -9,6 +8,7 @@ from urllib.parse import unquote, urlparse
 from audio_player import audioPlayer
 from card_playback_service import sanitize_tap_id, schedule_play_card_for_tap
 from cards_store import get_card, list_cards, save_card, save_uploaded_file
+from multipart import parse_file_uploads
 from tapped_server import WAIT_TAP_TIMEOUT_SEC
 
 WEB_ROOT = Path(__file__).resolve().parent / 'web'
@@ -180,27 +180,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if not ctype.startswith('multipart/form-data'):
                 self._send_json(400, {'error': 'multipart/form-data required'})
                 return
-            form = cgi.FieldStorage(
-                fp=self.rfile,
-                headers=self.headers,
-                environ={
-                    'REQUEST_METHOD': 'POST',
-                    'CONTENT_TYPE': ctype,
-                    'CONTENT_LENGTH': self.headers.get('Content-Length', ''),
-                },
-            )
+            length = int(self.headers.get('Content-Length', 0))
+            raw = self.rfile.read(length) if length > 0 else b''
             uploaded: list[str] = []
-            if 'file' in form:
-                items = form['file']
-                if not isinstance(items, list):
-                    items = [items]
-                for item in items:
-                    if not item.filename:
-                        continue
-                    data = item.file.read() if item.file else b''
-                    name = save_uploaded_file(card_id, item.filename, data)
-                    if name is not None:
-                        uploaded.append(name)
+            for filename, data in parse_file_uploads(ctype, raw):
+                name = save_uploaded_file(card_id, filename, data)
+                if name is not None:
+                    uploaded.append(name)
             if not uploaded:
                 self._send_json(400, {'error': 'no files uploaded'})
                 return
