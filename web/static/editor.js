@@ -153,9 +153,40 @@
     setStatus(editorStatus, 'Saved', 'muted');
   }
 
+  function cardDisplayLabel(title, id) {
+    var trimmed = (title || '').trim();
+    return trimmed || id;
+  }
+
   function optionLabel(card) {
-    var label = card.title ? card.title + ' — ' : '';
-    return label + card.id;
+    return cardDisplayLabel(card.title, card.id);
+  }
+
+  function updateCardIdDisplay() {
+    var labelRow = cardIdEl.closest('.card-id-label');
+    if (!labelRow) {
+      return;
+    }
+    var title = cardTitleEl.value.trim();
+    if (title) {
+      labelRow.hidden = true;
+      return;
+    }
+    labelRow.hidden = false;
+    cardIdEl.textContent = currentId || '';
+  }
+
+  function syncCardSelectOptionLabel() {
+    if (!currentId) {
+      return;
+    }
+    var options = cardSelect.options;
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].value === currentId) {
+        options[i].textContent = cardDisplayLabel(cardTitleEl.value, currentId);
+        break;
+      }
+    }
   }
 
   function refreshCardList(selectId) {
@@ -287,13 +318,13 @@
         return res.json();
       })
       .then(function (card) {
-        cardIdEl.textContent = card.id;
         cardTitleEl.value = card.title || '';
         tracks = card.tracks.slice();
         missing = card.missing || [];
         dirty = false;
         editorPanel.hidden = false;
         renderTracks();
+        updateCardIdDisplay();
         setStatus(editorStatus, '', 'muted');
         cardSelect.value = card.id;
       });
@@ -521,7 +552,11 @@
       });
   });
 
-  cardTitleEl.addEventListener('input', markDirty);
+  cardTitleEl.addEventListener('input', function () {
+    markDirty();
+    updateCardIdDisplay();
+    syncCardSelectOptionLabel();
+  });
 
   saveBtn.addEventListener('click', save);
   playCardBtn.addEventListener('click', function () {
