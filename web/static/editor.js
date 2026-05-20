@@ -61,6 +61,7 @@
   var selectedVariant = 'original';
   var normalizedUrl = null;
   var normalizeInFlight = null;
+  var variantSwitchGeneration = 0;
   var mediaStream = null;
   var mediaRecorder = null;
   var recordedChunks = [];
@@ -756,6 +757,17 @@
     });
   }
 
+  function setSegmentButtonsEnabled(enabled) {
+    segmentBtns.forEach(function (btn) {
+      if (enabled) {
+        btn.disabled = false;
+        btn.removeAttribute('disabled');
+      } else {
+        btn.disabled = true;
+      }
+    });
+  }
+
   function updateImportAudioSrc() {
     if (!currentStaging) {
       return;
@@ -779,13 +791,14 @@
     normalizedUrl = null;
     selectedVariant = 'original';
     normalizeInFlight = null;
+    variantSwitchGeneration = 0;
     updateSegmentUi();
     setImportStatus('', 'muted');
     importFileStem.classList.remove('invalid');
     importDeleteBtn.hidden = true;
     importTitle.textContent = 'Import audio';
     importSaveBtn.textContent = 'Save to card';
-    segmentBtns.forEach(function (btn) { btn.disabled = false; });
+    setSegmentButtonsEnabled(true);
   }
 
   function discardStaging(stagingId) {
@@ -1001,38 +1014,64 @@
       if (!currentStaging) {
         return;
       }
-      if (variant === 'normalized') {
-        importSaveBtn.disabled = true;
-        segmentBtns.forEach(function (b) { b.disabled = true; });
-        setImportStatus('Processing normalization…', 'live');
-        ensureNormalized()
-          .then(function () {
-            selectedVariant = 'normalized';
-            updateSegmentUi();
-            updateImportAudioSrc();
-            setImportStatus('', 'muted');
-          })
-          .catch(function (err) {
-            if (err && err.message === 'unavailable') {
-              setImportStatus('Normalization unavailable — install ffmpeg in Termux', 'dead');
-            } else {
-              setImportStatus('Normalization failed — try Original', 'dead');
-            }
-            selectedVariant = 'original';
-            updateSegmentUi();
-            updateImportAudioSrc();
-          })
-          .finally(function () {
-            segmentBtns.forEach(function (b) { b.disabled = false; });
-            refreshImportFilenameState();
-          });
+      if (variant === 'original') {
+        if (selectedVariant === 'original') {
+          return;
+        }
+        variantSwitchGeneration += 1;
+        selectedVariant = 'original';
+        updateSegmentUi();
+        updateImportAudioSrc();
+        setImportStatus('', 'muted');
+        setSegmentButtonsEnabled(true);
+        refreshImportFilenameState();
         return;
       }
-      selectedVariant = 'original';
-      updateSegmentUi();
-      updateImportAudioSrc();
-      setImportStatus('', 'muted');
-      refreshImportFilenameState();
+      if (selectedVariant === 'normalized' || normalizeInFlight) {
+        return;
+      }
+      if (normalizedUrl) {
+        selectedVariant = 'normalized';
+        updateSegmentUi();
+        updateImportAudioSrc();
+        setImportStatus('', 'muted');
+        refreshImportFilenameState();
+        return;
+      }
+      variantSwitchGeneration += 1;
+      var switchId = variantSwitchGeneration;
+      importSaveBtn.disabled = true;
+      setSegmentButtonsEnabled(false);
+      setImportStatus('Processing normalization…', 'live');
+      ensureNormalized()
+        .then(function () {
+          if (switchId !== variantSwitchGeneration) {
+            return;
+          }
+          selectedVariant = 'normalized';
+          updateSegmentUi();
+          updateImportAudioSrc();
+          setImportStatus('', 'muted');
+        })
+        .catch(function (err) {
+          if (switchId !== variantSwitchGeneration) {
+            return;
+          }
+          if (err && err.message === 'unavailable') {
+            setImportStatus('Normalization unavailable — install ffmpeg in Termux', 'dead');
+          } else {
+            setImportStatus('Normalization failed — try Original', 'dead');
+          }
+          selectedVariant = 'original';
+          updateSegmentUi();
+          updateImportAudioSrc();
+        })
+        .finally(function () {
+          setSegmentButtonsEnabled(true);
+          if (switchId === variantSwitchGeneration) {
+            refreshImportFilenameState();
+          }
+        });
     });
   });
 
