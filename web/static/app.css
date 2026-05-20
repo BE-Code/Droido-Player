@@ -300,22 +300,33 @@ label {
 }
 
 .editor-header h1 {
+  position: relative;
   margin: 0;
+  display: inline-block;
   font-family: var(--font-display);
   font-size: 2rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  padding-bottom: 0.5rem;
+}
+
+.editor-header h1::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(
     90deg,
-    var(--sky-deep) 0%,
-    var(--sun) 40%,
-    var(--coral) 70%,
+    var(--sun) 0%,
+    var(--coral) 25%,
+    var(--mint) 50%,
+    var(--sky) 75%,
     var(--grape) 100%
   );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.7));
 }
 
 .playback-bar {
