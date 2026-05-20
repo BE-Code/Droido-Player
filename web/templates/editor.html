@@ -3,13 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Card editor</title>
+  <meta name="theme-color" content="#fff8f0">
+  <meta name="color-scheme" content="light">
+  <title>Droido Player</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body class="editor">
   <header class="editor-header">
-    <h1>Card editor</h1>
+    <h1>Droido Player</h1>
   </header>
+
+  <section class="playback-bar panel" aria-label="Playback controls">
+    <div class="playback-transport">
+      <button type="button" id="playback-back-btn" class="playback-btn" title="Previous track" aria-label="Previous track">⏮</button>
+      <button type="button" id="playback-play-pause-btn" class="playback-btn playback-btn-primary" title="Play" aria-label="Play">
+        <span class="playback-icon-play" aria-hidden="true">▶</span>
+        <span class="playback-icon-pause" aria-hidden="true"></span>
+      </button>
+      <button type="button" id="playback-stop-btn" class="playback-btn" title="Stop" aria-label="Stop" disabled>
+        <span class="playback-icon-stop" aria-hidden="true"></span>
+      </button>
+      <button type="button" id="playback-forward-btn" class="playback-btn" title="Next track" aria-label="Next track">⏭</button>
+    </div>
+    <div class="volume-controls" aria-label="Media volume">
+      <label class="volume-label" for="volume-slider">Volume</label>
+      <input type="range" id="volume-slider" min="0" max="100" step="1" value="100">
+      <span id="volume-value" class="volume-value" aria-live="polite">100%</span>
+    </div>
+    <p id="playback-status" class="playback-status muted" hidden></p>
+  </section>
 
   <section class="panel">
     <label for="card-select">Open card</label>
@@ -29,9 +54,7 @@
     <input type="text" id="card-title" placeholder="Optional display name" autocomplete="off">
 
     <div class="toolbar">
-      <button type="button" id="save-btn">Save</button>
-      <button type="button" id="play-btn">Play</button>
-      <button type="button" id="stop-btn" class="secondary">Stop</button>
+      <button type="button" id="play-card-btn">Play card</button>
     </div>
     <p id="editor-status" class="muted"></p>
 
@@ -98,6 +121,7 @@
       <p id="import-status" class="muted"></p>
       <div class="toolbar modal-actions">
         <button type="button" id="import-save-btn">Save to card</button>
+        <button type="button" id="import-delete-btn" class="danger secondary" hidden>Delete track</button>
         <button type="button" id="import-cancel-btn" class="secondary">Cancel</button>
       </div>
     </div>

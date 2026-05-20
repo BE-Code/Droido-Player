@@ -5,22 +5,30 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from android_volume import VolumeUnavailable, get_volume, set_volume
 from audio_normalize import ffmpeg_available
 from audio_player import audioPlayer
-from card_playback_service import sanitize_tap_id, schedule_play_card_for_tap
+from card_playback_service import (
+    get_now_playing_tap_id,
+    sanitize_tap_id,
+    schedule_play_card_for_tap,
+)
 from cards_store import (
     commit_staging,
+    create_staging_from_track,
     create_staging_from_url,
     create_staging_upload,
+    delete_track_file,
     discard_staging,
     get_card,
     list_cards,
     normalize_staging,
     resolve_audio_path,
     save_card,
+    validate_file_stem,
 )
 from multipart import parse_file_uploads
-from tapped_server import WAIT_TAP_TIMEOUT_SEC
+from tapped_server import WAIT_TAP_TIMEOUT_SEC, _CANCEL_SENTINEL
 
 WEB_ROOT = Path(__file__).resolve().parent / 'web'
 STATIC_ROOT = WEB_ROOT / 'static'
@@ -107,6 +115,21 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self._send_json(200, list_cards())
             return
 
+        if path == '/api/volume':
+            try:
+                self._send_json(200, {'volume': get_volume()})
+            except VolumeUnavailable as exc:
+                self._send_json(503, {'error': str(exc)})
+            return
+
+        if path == '/api/playback':
+            state = audioPlayer.get_playback_state()
+            card_id = get_now_playing_tap_id()
+            if card_id is not None:
+                state['cardId'] = card_id
+            self._send_json(200, state)
+            return
+
         card_id = self._api_card_id(path_parts)
         if card_id is not None and len(path_parts) == 3:
             card = get_card(card_id)
@@ -138,6 +161,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 return
             finally:
                 self.server.unregister_waiter(q)
+
+            if tap_id is _CANCEL_SENTINEL:
+                self._send_json(499, {'error': 'cancelled'})
+                return
 
             self._send_json(200, {'id': tap_id})
             return
@@ -196,15 +223,83 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if len(path_parts) == 5 and path_parts[3] == 'tracks':
+            track_name = unquote(path_parts[4])
+            if not delete_track_file(card_id, track_name):
+                self._send_json(404, {'error': 'track not found'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
         self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')
 
     def do_POST(self):
         path_parts = self._path_parts()
 
+        if (
+            len(path_parts) == 3
+            and path_parts[0] == 'api'
+            and path_parts[1] == 'wait-tap'
+            and path_parts[2] == 'cancel'
+        ):
+            self.server.cancel_waiting()
+            self.send_response(204)
+            self.end_headers()
+            return
+
         if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'stop':
             audioPlayer.stop()
             self.send_response(204)
             self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'pause':
+            if not audioPlayer.set_pause(True):
+                self._send_json(503, {'error': 'pause failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'resume':
+            if not audioPlayer.set_pause(False):
+                self._send_json(503, {'error': 'resume failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'forward':
+            if not audioPlayer.forward():
+                self._send_json(503, {'error': 'skip forward failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'back':
+            if not audioPlayer.back():
+                self._send_json(503, {'error': 'skip back failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'volume':
+            body = self._read_json_body()
+            if not isinstance(body, dict) or 'volume' not in body:
+                self._send_json(400, {'error': 'expected JSON with volume number'})
+                return
+            raw = body.get('volume')
+            if not isinstance(raw, (int, float)):
+                self._send_json(400, {'error': 'volume must be a number'})
+                return
+            try:
+                set_volume(raw)
+                self._send_json(200, {'volume': get_volume()})
+            except VolumeUnavailable as exc:
+                self._send_json(503, {'error': str(exc)})
             return
 
         card_id = self._api_card_id(path_parts)
@@ -232,6 +327,15 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 err = result['error']
                 status = 400 if err.startswith('only http') else 503
                 self._send_json(status, {'error': err})
+                return
+            self._send_json(200, result)
+            return
+
+        if len(path_parts) == 6 and path_parts[3] == 'tracks' and path_parts[5] == 'edit':
+            track_name = unquote(path_parts[4])
+            result = create_staging_from_track(card_id, track_name)
+            if result is None:
+                self._send_json(404, {'error': 'track not found'})
                 return
             self._send_json(200, result)
             return
@@ -290,11 +394,25 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if file_stem is not None and not isinstance(file_stem, str):
                 self._send_json(400, {'error': 'fileStem must be a string'})
                 return
+            replace_track = body.get('replaceTrack')
+            if replace_track is not None and not isinstance(replace_track, str):
+                self._send_json(400, {'error': 'replaceTrack must be a string'})
+                return
             if choice == 'normalized' and not ffmpeg_available():
                 self._send_json(503, {'error': 'ffmpeg not available'})
                 return
+            if file_stem is not None and str(file_stem).strip():
+                stem_err = validate_file_stem(str(file_stem), original_name)
+                if stem_err:
+                    self._send_json(400, {'error': stem_err})
+                    return
             filename = commit_staging(
-                card_id, staging_id, original_name, choice, file_stem=file_stem
+                card_id,
+                staging_id,
+                original_name,
+                choice,
+                file_stem=file_stem,
+                replace_track=replace_track,
             )
             if filename is None:
                 self._send_json(400, {'error': 'commit failed'})

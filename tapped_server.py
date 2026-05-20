@@ -6,6 +6,8 @@ from http.server import ThreadingHTTPServer
 from card_playback_service import schedule_play_card_for_tap
 
 WAIT_TAP_TIMEOUT_SEC = 120.0
+_CANCEL_SENTINEL = object()
+
 
 class TappedServer(ThreadingHTTPServer):
     """Routes each tap to the next waiting long-poll, FIFO."""
@@ -27,6 +29,18 @@ class TappedServer(ThreadingHTTPServer):
                 self._tap_waiters.remove(q)
             except ValueError:
                 pass
+
+    def cancel_waiting(self) -> bool:
+        """Unblock the most recent /wait-tap long-poll (user cancelled scan)."""
+        with self._wait_lock:
+            if not self._tap_waiters:
+                return False
+            q = self._tap_waiters.pop()
+        try:
+            q.put_nowait(_CANCEL_SENTINEL)
+        except queue.Full:
+            pass
+        return True
 
     def record_tap(self, tap_id):
         q = None

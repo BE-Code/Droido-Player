@@ -4,6 +4,9 @@ from pathlib import Path
 
 from audio_player import audioPlayer
 
+_now_playing_lock = threading.Lock()
+_now_playing_tap_id: str | None = None
+
 # Matches setup: APPDIR=~/storage/shared/Droido-Player-Data
 _DEFAULT_REL = Path('storage') / 'shared' / 'Droido-Player-Data'
 # Long NFC payloads map to a folder name = first N chars (fits typical NAME_MAX).
@@ -70,12 +73,31 @@ def find_m3u_for_tap(tap_id: str) -> Path | None:
     return None
 
 
+def get_now_playing_tap_id() -> str | None:
+    with _now_playing_lock:
+        return _now_playing_tap_id
+
+
+def _set_now_playing_tap_id(tap_id: str | None) -> None:
+    global _now_playing_tap_id
+    key = sanitize_tap_id(tap_id) if tap_id else None
+    with _now_playing_lock:
+        _now_playing_tap_id = key
+
+
 def play_card_for_tap(tap_id: str) -> bool:
-    path = find_m3u_for_tap(tap_id)
+    key = sanitize_tap_id(tap_id)
+    if key is None:
+        return False
+    path = find_m3u_for_tap(key)
     if path is None:
         audioPlayer.stop()
+        _set_now_playing_tap_id(None)
         return False
-    return audioPlayer.play(path)
+    if audioPlayer.play(path):
+        _set_now_playing_tap_id(key)
+        return True
+    return False
 
 
 def _play_card_worker(tap_id: str) -> None:

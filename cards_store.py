@@ -40,6 +40,36 @@ def sanitize_filename(raw: str) -> str | None:
     return key
 
 
+def validate_file_stem(stem: str, original_name: str) -> str | None:
+    """Return an error message if stem is not a valid basename (extension from original_name)."""
+    fs = stem.strip()
+    if not fs:
+        return 'name cannot be empty'
+    if fs in ('.', '..'):
+        return 'name cannot be . or ..'
+    for c in fs:
+        if ord(c) < 32:
+            return 'name cannot include control characters'
+        if c in _UNSAFE_FILENAME_CHARS:
+            return 'name cannot include \\ / : * ? " < > |'
+    if fs.endswith(' ') or fs.endswith('.'):
+        return 'name cannot end with a space or period'
+    ext = Path(original_name).suffix
+    if ext:
+        if fs.lower().endswith(ext.lower()) and len(fs) > len(ext):
+            return 'do not type the file extension in the name field'
+        candidate = fs + ext
+        safe = sanitize_filename(candidate)
+        if safe is None:
+            return 'invalid file name'
+        if Path(safe).suffix.lower() != ext.lower():
+            return 'invalid file name'
+    else:
+        if sanitize_filename(fs) is None:
+            return 'invalid file name'
+    return None
+
+
 def _playlist_path(folder: Path) -> Path:
     return folder / PLAYLIST_NAME
 
@@ -236,15 +266,29 @@ def normalized_commit_name(original_name: str) -> str:
     return f'{p.stem}.norm{p.suffix}'
 
 
+def _norm_sibling_basename(basename: str) -> str | None:
+    """Other on-disk name for the same logical track (foo.m4a ↔ foo.norm.m4a)."""
+    safe = sanitize_filename(basename)
+    if safe is None:
+        return None
+    p = Path(safe)
+    stem = p.stem
+    if stem.endswith('.norm'):
+        alt_stem = stem[:-5]
+        if not alt_stem:
+            return None
+        return f'{alt_stem}{p.suffix}'
+    return normalized_commit_name(safe)
+
+
 def _commit_destination_basename(
     original_name: str, choice: str, file_stem: str | None
 ) -> str | None:
-    """Basename for the committed file; optional file_stem overrides the stem only (extension unchanged)."""
+    """Basename for the committed file; choice only picks staging source, not the final name."""
+    del choice
     fs = None if file_stem is None else str(file_stem).strip()
     if not fs:
-        if choice == 'original':
-            return sanitize_filename(original_name) or 'audio'
-        return normalized_commit_name(original_name)
+        return sanitize_filename(original_name) or 'audio'
 
     ext = Path(original_name).suffix
     if ext:
@@ -254,16 +298,8 @@ def _commit_destination_basename(
             return None
         if Path(safe).suffix.lower() != ext.lower():
             return None
-        stem = Path(safe).stem
-        if choice == 'original':
-            return safe
-        return f'{stem}.norm{ext}'
-    stem = sanitize_filename(fs)
-    if stem is None:
-        return None
-    if choice == 'original':
-        return stem
-    return f'{stem}.norm'
+        return safe
+    return sanitize_filename(fs)
 
 
 def _yt_dlp_executable() -> str | None:
@@ -370,6 +406,33 @@ def create_staging_from_url(tap_id: str, url: str) -> dict:
     }
 
 
+def create_staging_from_track(tap_id: str, track_name: str) -> dict | None:
+    """Copy an on-card track into staging for preview, normalize, rename, or replace."""
+    folder = card_folder(tap_id)
+    if folder is None:
+        return None
+    safe = sanitize_filename(track_name)
+    if safe is None:
+        return None
+    src = folder / safe
+    if not src.is_file():
+        return None
+    staging_id = uuid.uuid4().hex
+    staging_dir = _staging_dir(folder, staging_id)
+    if staging_dir is None:
+        return None
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    original_path = _original_staging_file(staging_dir, safe)
+    shutil.copy2(src, original_path)
+    rel = f'{STAGING_DIR_NAME}/{staging_id}/{original_path.name}'
+    return {
+        'stagingId': staging_id,
+        'originalName': safe,
+        'originalUrl': audio_url_for_path(tap_id, rel),
+        'normalizedUrl': None,
+    }
+
+
 def create_staging_upload(tap_id: str, original_name: str, data: bytes) -> dict | None:
     folder = ensure_card_folder(tap_id)
     if folder is None:
@@ -443,6 +506,20 @@ def discard_staging(tap_id: str, staging_id: str) -> bool:
     return True
 
 
+def delete_track_file(tap_id: str, track_name: str) -> bool:
+    """Remove track file from card folder if present; succeeds when already missing."""
+    folder = card_folder(tap_id)
+    if folder is None:
+        return False
+    safe = sanitize_filename(track_name)
+    if safe is None:
+        return False
+    path = folder / safe
+    if path.is_file():
+        path.unlink()
+    return True
+
+
 def commit_staging(
     tap_id: str,
     staging_id: str,
@@ -450,6 +527,7 @@ def commit_staging(
     choice: str,
     *,
     file_stem: str | None = None,
+    replace_track: str | None = None,
 ) -> str | None:
     if choice not in ('original', 'normalized'):
         return None
@@ -472,8 +550,19 @@ def commit_staging(
     final_basename = _commit_destination_basename(original_name, choice, file_stem)
     if final_basename is None:
         return None
-    final_name = _unique_final_name(folder, final_basename)
+    replace_safe = sanitize_filename(replace_track) if replace_track else None
+    if replace_safe and final_basename == replace_safe:
+        final_name = replace_safe
+    else:
+        final_name = _unique_final_name(folder, final_basename)
     dest = folder / final_name
     shutil.copy2(source, dest)
+    if replace_safe:
+        for name in (replace_safe, _norm_sibling_basename(replace_safe)):
+            if not name or name == final_name:
+                continue
+            old_path = folder / name
+            if old_path.is_file() and old_path.resolve() != dest.resolve():
+                old_path.unlink()
     _discard_staging_dir(staging_dir)
     return final_name

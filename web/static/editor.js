@@ -5,10 +5,13 @@
   var editorPanel = document.getElementById('editor-panel');
   var cardIdEl = document.getElementById('card-id');
   var cardTitleEl = document.getElementById('card-title');
-  var saveBtn = document.getElementById('save-btn');
-  var playBtn = document.getElementById('play-btn');
-  var stopBtn = document.getElementById('stop-btn');
+  var playCardBtn = document.getElementById('play-card-btn');
   var editorStatus = document.getElementById('editor-status');
+  var playbackBackBtn = document.getElementById('playback-back-btn');
+  var playbackPlayPauseBtn = document.getElementById('playback-play-pause-btn');
+  var playbackStopBtn = document.getElementById('playback-stop-btn');
+  var playbackForwardBtn = document.getElementById('playback-forward-btn');
+  var playbackStatus = document.getElementById('playback-status');
   var tracksEmpty = document.getElementById('tracks-empty');
   var trackList = document.getElementById('track-list');
   var fileInput = document.getElementById('file-input');
@@ -37,16 +40,24 @@
   var importAudio = document.getElementById('import-audio');
   var importStatus = document.getElementById('import-status');
   var importSaveBtn = document.getElementById('import-save-btn');
+  var importDeleteBtn = document.getElementById('import-delete-btn');
   var importCancelBtn = document.getElementById('import-cancel-btn');
+  var importTitle = document.getElementById('import-title');
   var segmentBtns = importModal.querySelectorAll('.segmented-btn');
+  var volumeSlider = document.getElementById('volume-slider');
+  var volumeValue = document.getElementById('volume-value');
 
   var currentId = null;
   var tracks = [];
   var missing = [];
-  var dirty = false;
+  var saveTimer = null;
+  var savePromise = null;
   var importQueue = [];
   var importTotal = 0;
   var currentStaging = null;
+  var stagingMode = 'import';
+  var editingTrackName = null;
+  var editingTrackIndex = null;
   var selectedVariant = 'original';
   var normalizedUrl = null;
   var normalizeInFlight = null;
@@ -54,6 +65,12 @@
   var mediaRecorder = null;
   var recordedChunks = [];
   var recordMimeType = '';
+  var volumeSaveTimer = null;
+  var playbackPollTimer = null;
+  var playbackActive = false;
+  var playbackPaused = false;
+  var playbackStopped = true;
+  var nowPlayingId = null;
 
   function setStatus(el, text, kind) {
     el.textContent = text || '';
@@ -61,19 +78,167 @@
     el.hidden = !text;
   }
 
-  function markDirty() {
-    dirty = true;
-    setStatus(editorStatus, 'Unsaved changes', 'live');
+  function setPlaybackError(text) {
+    setStatus(playbackStatus, text, 'dead');
   }
 
-  function clearDirty() {
-    dirty = false;
-    setStatus(editorStatus, 'Saved', 'muted');
+  function clearPlaybackStatus() {
+    setStatus(playbackStatus, '', 'muted');
+  }
+
+  function formatVolume(level) {
+    return Math.round(level) + '%';
+  }
+
+  function showVolume(level) {
+    var rounded = Math.round(level);
+    volumeSlider.value = String(rounded);
+    volumeValue.textContent = formatVolume(rounded);
+  }
+
+  function loadVolume() {
+    return fetch('/api/volume')
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('volume load failed');
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (typeof data.volume === 'number') {
+          showVolume(data.volume);
+        }
+      })
+      .catch(function () {
+        showVolume(Number(volumeSlider.value) || 100);
+      });
+  }
+
+  function saveVolume(level) {
+    return fetch('/api/volume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ volume: level }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          if (!res.ok) {
+            throw new Error((data && data.error) || 'volume save failed');
+          }
+          return data;
+        });
+      })
+      .then(function (data) {
+        if (typeof data.volume === 'number') {
+          showVolume(data.volume);
+        }
+      })
+      .catch(function (err) {
+        setStatus(editorStatus, 'Volume: ' + (err.message || 'save failed'), 'dead');
+      });
+  }
+
+  function queueVolumeSave(level) {
+    if (volumeSaveTimer) {
+      clearTimeout(volumeSaveTimer);
+    }
+    volumeSaveTimer = setTimeout(function () {
+      volumeSaveTimer = null;
+      saveVolume(level);
+    }, 150);
+  }
+
+  function persistCard() {
+    if (!currentId) {
+      return Promise.resolve();
+    }
+    if (savePromise) {
+      return savePromise;
+    }
+    setStatus(editorStatus, 'Saving…', 'live');
+    savePromise = fetch('/api/cards/' + encodeURIComponent(currentId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload()),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('save failed');
+        }
+        return res.json();
+      })
+      .then(function (card) {
+        tracks = card.tracks.slice();
+        missing = card.missing || [];
+        renderTracks();
+        setStatus(editorStatus, 'Saved', 'muted');
+        return refreshCardList(currentId);
+      })
+      .catch(function () {
+        setStatus(editorStatus, 'Save failed', 'dead');
+        throw new Error('save failed');
+      })
+      .finally(function () {
+        savePromise = null;
+      });
+    return savePromise;
+  }
+
+  function queueSave() {
+    if (!currentId) {
+      return;
+    }
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+    }
+    saveTimer = setTimeout(function () {
+      saveTimer = null;
+      persistCard();
+    }, 400);
+  }
+
+  function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    return persistCard();
+  }
+
+  function cardDisplayLabel(title, id) {
+    var trimmed = (title || '').trim();
+    return trimmed || id;
   }
 
   function optionLabel(card) {
-    var label = card.title ? card.title + ' — ' : '';
-    return label + card.id;
+    return cardDisplayLabel(card.title, card.id);
+  }
+
+  function updateCardIdDisplay() {
+    var labelRow = cardIdEl.closest('.card-id-label');
+    if (!labelRow) {
+      return;
+    }
+    var title = cardTitleEl.value.trim();
+    if (title) {
+      labelRow.hidden = true;
+      return;
+    }
+    labelRow.hidden = false;
+    cardIdEl.textContent = currentId || '';
+  }
+
+  function syncCardSelectOptionLabel() {
+    if (!currentId) {
+      return;
+    }
+    var options = cardSelect.options;
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].value === currentId) {
+        options[i].textContent = cardDisplayLabel(cardTitleEl.value, currentId);
+        break;
+      }
+    }
   }
 
   function refreshCardList(selectId) {
@@ -102,8 +267,16 @@
       if (missing.indexOf(name) >= 0) {
         li.classList.add('missing');
       }
-      li.draggable = true;
       li.dataset.index = String(index);
+
+      var dragHandle = document.createElement('span');
+      dragHandle.className = 'track-drag-handle';
+      dragHandle.title = 'Drag to reorder';
+      dragHandle.setAttribute('role', 'button');
+      dragHandle.setAttribute('aria-label', 'Drag to reorder');
+      dragHandle.tabIndex = 0;
+      dragHandle.textContent = '⠿';
+      li.appendChild(dragHandle);
 
       var nameSpan = document.createElement('span');
       nameSpan.className = 'track-name';
@@ -113,76 +286,152 @@
       var actions = document.createElement('span');
       actions.className = 'track-actions';
 
-      var upBtn = document.createElement('button');
-      upBtn.type = 'button';
-      upBtn.className = 'icon-btn';
-      upBtn.textContent = '↑';
-      upBtn.title = 'Move up';
-      upBtn.disabled = index === 0;
-      upBtn.addEventListener('click', function () {
-        moveTrack(index, index - 1);
-      });
-
-      var downBtn = document.createElement('button');
-      downBtn.type = 'button';
-      downBtn.className = 'icon-btn';
-      downBtn.textContent = '↓';
-      downBtn.title = 'Move down';
-      downBtn.disabled = index === tracks.length - 1;
-      downBtn.addEventListener('click', function () {
-        moveTrack(index, index + 1);
-      });
-
-      var removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'icon-btn danger';
-      removeBtn.textContent = '×';
-      removeBtn.title = 'Remove from playlist';
-      removeBtn.addEventListener('click', function () {
-        tracks.splice(index, 1);
-        missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
-        markDirty();
-        renderTracks();
-      });
-
-      actions.appendChild(upBtn);
-      actions.appendChild(downBtn);
-      actions.appendChild(removeBtn);
+      var isMissing = missing.indexOf(name) >= 0;
+      if (isMissing) {
+        var removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'icon-btn';
+        removeBtn.textContent = '×';
+        removeBtn.title = 'Remove from playlist';
+        removeBtn.setAttribute('aria-label', 'Remove from playlist');
+        removeBtn.addEventListener('click', function () {
+          removeTrackFromPlaylist(name, index);
+        });
+        actions.appendChild(removeBtn);
+      } else {
+        var editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'icon-btn icon-edit';
+        editBtn.title = 'Edit track';
+        editBtn.setAttribute('aria-label', 'Edit track');
+        editBtn.addEventListener('click', function () {
+          openTrackEdit(name, index);
+        });
+        actions.appendChild(editBtn);
+      }
       li.appendChild(actions);
-
-      li.addEventListener('dragstart', onDragStart);
-      li.addEventListener('dragover', onDragOver);
-      li.addEventListener('drop', onDrop);
-      li.addEventListener('dragend', onDragEnd);
 
       trackList.appendChild(li);
     });
   }
 
-  var dragFrom = null;
+  var POINTER_DRAG_THRESHOLD = 8;
+  var pointerDrag = null;
 
-  function onDragStart(e) {
-    dragFrom = Number(e.currentTarget.dataset.index);
-    e.currentTarget.classList.add('dragging');
+  function clearDragOver() {
+    trackList.querySelectorAll('.drag-over').forEach(function (el) {
+      el.classList.remove('drag-over');
+    });
   }
 
-  function onDragOver(e) {
-    e.preventDefault();
+  function findTrackItemAtPoint(x, y) {
+    var els = document.elementsFromPoint(x, y);
+    for (var i = 0; i < els.length; i++) {
+      var li = els[i].closest && els[i].closest('.track-item');
+      if (li && trackList.contains(li) && !li.classList.contains('dragging')) {
+        return li;
+      }
+    }
+    return null;
   }
 
-  function onDrop(e) {
-    e.preventDefault();
-    var to = Number(e.currentTarget.dataset.index);
-    if (dragFrom === null || dragFrom === to) {
+  function endPointerDrag(commit) {
+    if (!pointerDrag) {
       return;
     }
-    moveTrack(dragFrom, to);
-    dragFrom = null;
+    var from = pointerDrag.from;
+    var to = pointerDrag.over;
+    var item = pointerDrag.item;
+    pointerDrag = null;
+    document.body.classList.remove('track-reorder-active');
+    if (commit && to !== null && to !== from) {
+      moveTrack(from, to);
+      return;
+    }
+    item.classList.remove('dragging');
+    clearDragOver();
   }
 
-  function onDragEnd(e) {
-    e.currentTarget.classList.remove('dragging');
-    dragFrom = null;
+  function onTrackPointerMove(e) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) {
+      return;
+    }
+    var dx = e.clientX - pointerDrag.startX;
+    var dy = e.clientY - pointerDrag.startY;
+    if (!pointerDrag.started) {
+      if (Math.abs(dx) + Math.abs(dy) < POINTER_DRAG_THRESHOLD) {
+        return;
+      }
+      pointerDrag.started = true;
+      pointerDrag.item.classList.add('dragging');
+      document.body.classList.add('track-reorder-active');
+    }
+    e.preventDefault();
+    var over = findTrackItemAtPoint(e.clientX, e.clientY);
+    clearDragOver();
+    if (over) {
+      var idx = Number(over.dataset.index);
+      if (idx !== pointerDrag.from) {
+        over.classList.add('drag-over');
+        pointerDrag.over = idx;
+      } else {
+        pointerDrag.over = null;
+      }
+    } else {
+      pointerDrag.over = null;
+    }
+  }
+
+  function onTrackPointerUp(e) {
+    if (!pointerDrag || e.pointerId !== pointerDrag.pointerId) {
+      return;
+    }
+    var commit = pointerDrag.started;
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {
+      /* already released */
+    }
+    e.currentTarget.removeEventListener('pointermove', onTrackPointerMove);
+    e.currentTarget.removeEventListener('pointerup', onTrackPointerUp);
+    e.currentTarget.removeEventListener('pointercancel', onTrackPointerUp);
+    endPointerDrag(commit);
+  }
+
+  function onTrackPointerDown(e) {
+    if (e.button !== 0) {
+      return;
+    }
+    var handle = e.target.closest('.track-drag-handle');
+    if (!handle || !trackList.contains(handle)) {
+      return;
+    }
+    var li = handle.closest('.track-item');
+    if (!li) {
+      return;
+    }
+    pointerDrag = {
+      from: Number(li.dataset.index),
+      item: li,
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      started: false,
+      over: null
+    };
+    handle.setPointerCapture(e.pointerId);
+    handle.addEventListener('pointermove', onTrackPointerMove, { passive: false });
+    handle.addEventListener('pointerup', onTrackPointerUp);
+    handle.addEventListener('pointercancel', onTrackPointerUp);
+    e.preventDefault();
+  }
+
+  function setupTrackListPointerReorder() {
+    if (trackList.dataset.pointerReorderBound) {
+      return;
+    }
+    trackList.dataset.pointerReorderBound = '1';
+    trackList.addEventListener('pointerdown', onTrackPointerDown);
   }
 
   function moveTrack(from, to) {
@@ -191,11 +440,52 @@
     }
     var item = tracks.splice(from, 1)[0];
     tracks.splice(to, 0, item);
-    markDirty();
+    queueSave();
     renderTracks();
   }
 
+  function removeTrackFromPlaylist(trackName, trackIndex) {
+    if (!currentId) {
+      return;
+    }
+    var isMissing = missing.indexOf(trackName) >= 0;
+    var msg = isMissing
+      ? 'Remove this missing track from the playlist?'
+      : 'Delete this track file? It will be removed from the playlist.';
+    if (!window.confirm(msg)) {
+      return;
+    }
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/tracks/' + encodeURIComponent(trackName),
+      { method: 'DELETE' }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('delete failed');
+        }
+        if (trackIndex !== null && trackIndex >= 0 && trackIndex < tracks.length) {
+          tracks.splice(trackIndex, 1);
+        } else {
+          var i = tracks.indexOf(trackName);
+          if (i >= 0) {
+            tracks.splice(i, 1);
+          }
+        }
+        missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
+        renderTracks();
+        return flushSave();
+      })
+      .catch(function () {
+        setStatus(editorStatus, 'Could not remove track', 'dead');
+      });
+  }
+
   function openCard(id) {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
     currentId = id;
     return fetch('/api/cards/' + encodeURIComponent(id))
       .then(function (res) {
@@ -205,13 +495,12 @@
         return res.json();
       })
       .then(function (card) {
-        cardIdEl.textContent = card.id;
         cardTitleEl.value = card.title || '';
         tracks = card.tracks.slice();
         missing = card.missing || [];
-        dirty = false;
         editorPanel.hidden = false;
         renderTracks();
+        updateCardIdDisplay();
         setStatus(editorStatus, '', 'muted');
         cardSelect.value = card.id;
       });
@@ -224,76 +513,209 @@
     };
   }
 
-  function save() {
-    if (!currentId) {
-      return Promise.resolve();
+  function updatePlaybackTransportUi() {
+    var playing = playbackActive && !playbackPaused;
+    playbackPlayPauseBtn.classList.toggle('is-playing', playing);
+    playbackStopBtn.disabled = playbackStopped;
+    if (playing) {
+      playbackPlayPauseBtn.title = 'Pause';
+      playbackPlayPauseBtn.setAttribute('aria-label', 'Pause');
+    } else if (playbackActive && playbackPaused) {
+      playbackPlayPauseBtn.title = 'Resume';
+      playbackPlayPauseBtn.setAttribute('aria-label', 'Resume');
+    } else {
+      playbackPlayPauseBtn.title = 'Play';
+      playbackPlayPauseBtn.setAttribute('aria-label', 'Play');
     }
-    saveBtn.disabled = true;
-    return fetch('/api/cards/' + encodeURIComponent(currentId), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload()),
-    })
+    playbackPlayPauseBtn.disabled = false;
+  }
+
+  function applyPlaybackState(data) {
+    playbackStopped = !data || !data.active || !!data.stopped;
+    playbackActive = !!(data && data.active && !data.stopped);
+    playbackPaused = playbackActive && !!(data && data.paused);
+    if (data && data.cardId) {
+      nowPlayingId = data.cardId;
+    }
+    updatePlaybackTransportUi();
+  }
+
+  function refreshPlaybackState() {
+    return fetch('/api/playback')
       .then(function (res) {
         if (!res.ok) {
-          throw new Error('save failed');
+          throw new Error('playback state failed');
         }
         return res.json();
       })
-      .then(function (card) {
-        tracks = card.tracks.slice();
-        missing = card.missing || [];
-        renderTracks();
-        clearDirty();
-        return refreshCardList(currentId);
-      })
+      .then(applyPlaybackState)
       .catch(function () {
-        setStatus(editorStatus, 'Save failed', 'dead');
+        playbackActive = false;
+        playbackPaused = false;
+        playbackStopped = true;
+        updatePlaybackTransportUi();
+      });
+  }
+
+  function startPlaybackPoll() {
+    if (playbackPollTimer) {
+      return;
+    }
+    playbackPollTimer = setInterval(refreshPlaybackState, 2000);
+  }
+
+  function startPlaylist(cardId, statusEl) {
+    if (!cardId) {
+      if (statusEl === playbackStatus) {
+        setPlaybackError('No playlist to play');
+      } else {
+        setStatus(statusEl, 'No playlist to play', 'dead');
+      }
+      return Promise.reject(new Error('no card'));
+    }
+    var playRequest = cardId === currentId
+      ? flushSave().catch(function () { throw new Error('save failed'); })
+      : Promise.resolve();
+    return playRequest.then(function () {
+      return fetch('/api/cards/' + encodeURIComponent(cardId) + '/play', {
+        method: 'POST',
       })
-      .finally(function () {
-        saveBtn.disabled = false;
+        .then(function (res) {
+          if (!res.ok && res.status !== 204) {
+            throw new Error('play failed');
+          }
+          nowPlayingId = cardId;
+          if (statusEl === playbackStatus) {
+            clearPlaybackStatus();
+          } else {
+            setStatus(statusEl, 'Playing…', 'live');
+          }
+          startPlaybackPoll();
+          return refreshPlaybackState();
+        });
+    })
+      .catch(function (err) {
+        if (err && err.message === 'save failed') {
+          if (statusEl === playbackStatus) {
+            setPlaybackError('Could not save card before playing');
+          } else {
+            setStatus(statusEl, 'Could not save card before playing', 'dead');
+          }
+          throw err;
+        }
+        if (statusEl === playbackStatus) {
+          setPlaybackError('Play failed');
+        } else {
+          setStatus(statusEl, 'Play failed', 'dead');
+        }
+        throw new Error('play failed');
       });
   }
 
   function playCard() {
     if (!currentId) {
+      setStatus(editorStatus, 'Open a card first', 'dead');
+      return Promise.reject(new Error('no card'));
+    }
+    playCardBtn.disabled = true;
+    return startPlaylist(currentId, editorStatus).finally(function () {
+      playCardBtn.disabled = false;
+    });
+  }
+
+  function playNowPlaying() {
+    return startPlaylist(nowPlayingId || currentId, playbackStatus);
+  }
+
+  function postPlayback(path) {
+    return fetch(path, { method: 'POST' }).then(function (res) {
+      if (!res.ok && res.status !== 204) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          throw new Error((data && data.error) || 'request failed');
+        });
+      }
+      return refreshPlaybackState();
+    });
+  }
+
+  function togglePlayPause() {
+    if (playbackActive && !playbackPaused) {
+      postPlayback('/api/pause')
+        .then(clearPlaybackStatus)
+        .catch(function (err) {
+          setPlaybackError(err.message || 'Pause failed');
+        });
       return;
     }
-    if (dirty) {
-      setStatus(editorStatus, 'Save first — play uses the saved playlist only', 'dead');
+    if (playbackActive && playbackPaused) {
+      postPlayback('/api/resume')
+        .then(clearPlaybackStatus)
+        .catch(function (err) {
+          setPlaybackError(err.message || 'Resume failed');
+        });
       return;
     }
-    fetch('/api/cards/' + encodeURIComponent(currentId) + '/play', {
-      method: 'POST',
-    })
-      .then(function (res) {
-        if (!res.ok && res.status !== 204) {
-          throw new Error('play failed');
-        }
-        setStatus(editorStatus, 'Playing…', 'live');
-      })
-      .catch(function () {
-        setStatus(editorStatus, 'Play failed', 'dead');
-      });
+    playNowPlaying().catch(function () {});
   }
 
   cardSelect.addEventListener('change', function () {
     var id = cardSelect.value;
-    if (!id) {
-      editorPanel.hidden = true;
-      currentId = null;
-      return;
-    }
-    openCard(id).catch(function () {
-      setStatus(editorStatus, 'Could not load card', 'dead');
+    var previousId = currentId;
+    flushSave().finally(function () {
+      if (!id) {
+        editorPanel.hidden = true;
+        currentId = null;
+        return;
+      }
+      if (id === previousId && currentId === id) {
+        return;
+      }
+      openCard(id).catch(function () {
+        setStatus(editorStatus, 'Could not load card', 'dead');
+      });
     });
   });
 
-  scanBtn.addEventListener('click', function () {
-    scanBtn.disabled = true;
+  var scanActive = false;
+  var scanAbort = null;
+
+  function setScanIdle() {
+    scanActive = false;
+    scanAbort = null;
+    scanBtn.disabled = false;
+    scanBtn.textContent = 'Scan NFC';
+    scanBtn.classList.remove('secondary');
+  }
+
+  function setScanWaiting() {
+    scanActive = true;
+    scanAbort = new AbortController();
+    scanBtn.disabled = false;
+    scanBtn.textContent = 'Cancel';
+    scanBtn.classList.add('secondary');
     setStatus(scanStatus, 'Waiting for tap…', 'live');
-    fetch('/wait-tap')
+  }
+
+  function cancelScan() {
+    fetch('/api/wait-tap/cancel', { method: 'POST' }).catch(function () {
+      if (scanAbort) {
+        scanAbort.abort();
+      }
+    });
+  }
+
+  scanBtn.addEventListener('click', function () {
+    if (scanActive) {
+      cancelScan();
+      return;
+    }
+    setScanWaiting();
+    fetch('/wait-tap', { signal: scanAbort.signal })
       .then(function (res) {
+        if (res.status === 499) {
+          setStatus(scanStatus, 'Cancelled', 'muted');
+          return null;
+        }
         if (res.status === 408) {
           setStatus(scanStatus, 'Timed out', 'dead');
           return null;
@@ -309,30 +731,55 @@
           return;
         }
         setStatus(scanStatus, 'Tap received', 'muted');
-        return refreshCardList(data.id).then(function () {
+        return flushSave().then(function () {
+          return refreshCardList(data.id);
+        }).then(function () {
           return openCard(data.id);
         });
       })
-      .catch(function () {
+      .catch(function (err) {
+        if (err && err.name === 'AbortError') {
+          setStatus(scanStatus, 'Cancelled', 'muted');
+          return;
+        }
         setStatus(scanStatus, 'Network error', 'dead');
       })
-      .finally(function () {
-        scanBtn.disabled = false;
+      .finally(setScanIdle);
+  });
+
+  cardTitleEl.addEventListener('input', function () {
+    queueSave();
+    updateCardIdDisplay();
+    syncCardSelectOptionLabel();
+  });
+
+  playCardBtn.addEventListener('click', function () {
+    playCard().catch(function () {});
+  });
+
+  playbackBackBtn.addEventListener('click', function () {
+    postPlayback('/api/back')
+      .then(clearPlaybackStatus)
+      .catch(function (err) {
+        setPlaybackError(err.message || 'Skip back failed');
       });
   });
 
-  cardTitleEl.addEventListener('input', markDirty);
+  playbackForwardBtn.addEventListener('click', function () {
+    postPlayback('/api/forward')
+      .then(clearPlaybackStatus)
+      .catch(function (err) {
+        setPlaybackError(err.message || 'Skip forward failed');
+      });
+  });
 
-  saveBtn.addEventListener('click', save);
-  playBtn.addEventListener('click', playCard);
+  playbackPlayPauseBtn.addEventListener('click', togglePlayPause);
 
-  stopBtn.addEventListener('click', function () {
-    fetch('/api/stop', { method: 'POST' })
-      .then(function () {
-        setStatus(editorStatus, 'Stopped', 'muted');
-      })
-      .catch(function () {
-        setStatus(editorStatus, 'Stop failed', 'dead');
+  playbackStopBtn.addEventListener('click', function () {
+    postPlayback('/api/stop')
+      .then(clearPlaybackStatus)
+      .catch(function (err) {
+        setPlaybackError(err.message || 'Stop failed');
       });
   });
 
@@ -363,12 +810,18 @@
     importAudio.pause();
     importAudio.removeAttribute('src');
     currentStaging = null;
+    stagingMode = 'import';
+    editingTrackName = null;
+    editingTrackIndex = null;
     normalizedUrl = null;
     selectedVariant = 'original';
     normalizeInFlight = null;
     updateSegmentUi();
     setImportStatus('', 'muted');
-    importSaveBtn.disabled = false;
+    importFileStem.classList.remove('invalid');
+    importDeleteBtn.hidden = true;
+    importTitle.textContent = 'Import audio';
+    importSaveBtn.textContent = 'Save to card';
     segmentBtns.forEach(function (btn) { btn.disabled = false; });
   }
 
@@ -420,6 +873,9 @@
     return normalizeInFlight;
   }
 
+  var invalidFilenameChars = /[\\/:*?"<>|]/;
+  var controlChars = /[\x00-\x1f]/;
+
   function splitFileName(name) {
     var i = name.lastIndexOf('.');
     if (i <= 0) {
@@ -428,7 +884,47 @@
     return { stem: name.slice(0, i), ext: name.slice(i) };
   }
 
-  function openImportModal(staging, queueIndex, queueTotal) {
+  function validateFileStem(stem, ext) {
+    var fs = (stem || '').trim();
+    if (!fs) {
+      return 'Enter a file name.';
+    }
+    if (fs === '.' || fs === '..') {
+      return 'Name cannot be . or ..';
+    }
+    if (invalidFilenameChars.test(fs)) {
+      return 'Name cannot include \\ / : * ? " < > |';
+    }
+    if (controlChars.test(fs)) {
+      return 'Name cannot include control characters.';
+    }
+    if (/[.\s]$/.test(fs)) {
+      return 'Name cannot end with a space or period.';
+    }
+    if (ext && fs.toLowerCase().endsWith(ext.toLowerCase()) && fs.length > ext.length) {
+      return 'Do not type the extension — it is shown beside the name.';
+    }
+    return null;
+  }
+
+  function refreshImportFilenameState() {
+    var ext = importFileExt.textContent || '';
+    var nameErr = validateFileStem(importFileStem.value, ext);
+    var normBlocked = selectedVariant === 'normalized' && !normalizedUrl;
+    importFileStem.classList.toggle('invalid', !!nameErr);
+    importSaveBtn.disabled = !!nameErr || normBlocked;
+    if (nameErr) {
+      setImportStatus(nameErr, 'dead');
+    }
+    return !nameErr;
+  }
+
+  function openImportModal(staging, queueIndex, queueTotal, mode) {
+    stagingMode = mode || 'import';
+    if (stagingMode !== 'edit') {
+      editingTrackName = null;
+      editingTrackIndex = null;
+    }
     currentStaging = staging;
     selectedVariant = 'original';
     normalizedUrl = staging.normalizedUrl || null;
@@ -437,8 +933,8 @@
     importFileExt.textContent = parts.ext || '';
     importFileExt.hidden = !parts.ext;
     importFilenameHint.textContent = parts.ext
-      ? 'Extension stays the same; edit the name before it.'
-      : 'Edit the file name (no extension on this file).';
+      ? 'Use letters, numbers, spaces, dashes, and underscores. No \\ / : * ? " < > | and do not type the extension.'
+      : 'Use letters, numbers, spaces, dashes, and underscores. No \\ / : * ? " < > |';
     if (queueTotal > 1) {
       importQueueLabel.textContent = 'File ' + (queueIndex + 1) + ' of ' + queueTotal;
       importQueueLabel.hidden = false;
@@ -449,13 +945,59 @@
     updateImportAudioSrc();
     importModal.hidden = false;
     setImportStatus('', 'muted');
-    importSaveBtn.disabled = false;
+    if (stagingMode === 'edit') {
+      importTitle.textContent = 'Edit track';
+      importSaveBtn.textContent = 'Save changes';
+      importDeleteBtn.hidden = false;
+    } else {
+      importTitle.textContent = 'Import audio';
+      importSaveBtn.textContent = 'Save to card';
+      importDeleteBtn.hidden = true;
+    }
+    refreshImportFilenameState();
+  }
+
+  importFileStem.addEventListener('input', function () {
+    if (!currentStaging) {
+      return;
+    }
+    var valid = refreshImportFilenameState();
+    if (valid) {
+      setImportStatus('', 'muted');
+    }
+  });
+
+  function openTrackEdit(trackName, trackIndex) {
+    if (!currentId) {
+      return;
+    }
+    setStatus(editorStatus, 'Loading track…', 'live');
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/tracks/' + encodeURIComponent(trackName) + '/edit',
+      { method: 'POST' }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('edit failed');
+        }
+        return res.json();
+      })
+      .then(function (staging) {
+        setStatus(editorStatus, '', 'muted');
+        editingTrackName = trackName;
+        editingTrackIndex = trackIndex;
+        openImportModal(staging, 0, 1, 'edit');
+      })
+      .catch(function () {
+        setStatus(editorStatus, 'Could not open track for editing', 'dead');
+      });
   }
 
   function processImportQueue() {
     if (!importQueue.length) {
       importTotal = 0;
-      setStatus(editorStatus, 'Done adding files — save playlist when ready', 'muted');
+      setStatus(editorStatus, 'Done adding files', 'muted');
       return;
     }
     var file = importQueue.shift();
@@ -518,8 +1060,8 @@
             updateImportAudioSrc();
           })
           .finally(function () {
-            importSaveBtn.disabled = selectedVariant === 'normalized' && !normalizedUrl;
             segmentBtns.forEach(function (b) { b.disabled = false; });
+            refreshImportFilenameState();
           });
         return;
       }
@@ -527,7 +1069,7 @@
       updateSegmentUi();
       updateImportAudioSrc();
       setImportStatus('', 'muted');
-      importSaveBtn.disabled = false;
+      refreshImportFilenameState();
     });
   });
 
@@ -539,40 +1081,67 @@
       setImportStatus('Wait for normalization or choose Original', 'dead');
       return;
     }
+    if (!refreshImportFilenameState()) {
+      return;
+    }
     importSaveBtn.disabled = true;
     importCancelBtn.disabled = true;
     setImportStatus('Saving…', 'live');
+    var commitBody = {
+      choice: selectedVariant,
+      originalName: currentStaging.originalName,
+      fileStem: importFileStem.value,
+    };
+    if (stagingMode === 'edit' && editingTrackName) {
+      commitBody.replaceTrack = editingTrackName;
+    }
     fetch(
       '/api/cards/' + encodeURIComponent(currentId) +
         '/staging/' + encodeURIComponent(currentStaging.stagingId) + '/commit',
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          choice: selectedVariant,
-          originalName: currentStaging.originalName,
-          fileStem: importFileStem.value,
-        }),
+        body: JSON.stringify(commitBody),
       }
     )
       .then(function (res) {
-        if (!res.ok) {
-          throw new Error('commit failed');
-        }
-        return res.json();
+        return res.json().then(function (data) {
+          if (!res.ok) {
+            throw new Error((data && data.error) || 'commit failed');
+          }
+          return data;
+        }).catch(function (err) {
+          if (err && err.message) {
+            throw err;
+          }
+          if (!res.ok) {
+            throw new Error('commit failed');
+          }
+          throw err;
+        });
       })
       .then(function (data) {
-        if (tracks.indexOf(data.filename) < 0) {
+        if (stagingMode === 'edit' && editingTrackIndex !== null) {
+          tracks[editingTrackIndex] = data.filename;
+          missing = missing.filter(function (m) {
+            return m !== editingTrackName && tracks.indexOf(m) >= 0;
+          });
+        } else if (tracks.indexOf(data.filename) < 0) {
           tracks.push(data.filename);
         }
-        markDirty();
         renderTracks();
-        finishImportAndNext();
-        importCancelBtn.disabled = false;
+        return flushSave().then(function () {
+          if (stagingMode === 'edit') {
+            closeImportModal();
+          } else {
+            finishImportAndNext();
+          }
+          importCancelBtn.disabled = false;
+        });
       })
-      .catch(function () {
-        setImportStatus('Save failed', 'dead');
-        importSaveBtn.disabled = false;
+      .catch(function (err) {
+        setImportStatus((err && err.message) || 'Save failed', 'dead');
+        refreshImportFilenameState();
         importCancelBtn.disabled = false;
       });
   });
@@ -580,15 +1149,75 @@
   importCancelBtn.addEventListener('click', function () {
     if (!currentStaging) {
       closeImportModal();
-      processImportQueue();
+      if (stagingMode !== 'edit') {
+        processImportQueue();
+      }
       return;
     }
     var stagingId = currentStaging.stagingId;
+    var wasEdit = stagingMode === 'edit';
     importCancelBtn.disabled = true;
     discardStaging(stagingId).finally(function () {
-      finishImportAndNext();
+      if (wasEdit) {
+        closeImportModal();
+      } else {
+        finishImportAndNext();
+      }
       importCancelBtn.disabled = false;
     });
+  });
+
+  importDeleteBtn.addEventListener('click', function () {
+    if (stagingMode !== 'edit' || !editingTrackName || !currentId) {
+      return;
+    }
+    if (!window.confirm('Delete this track file? It will be removed from the playlist.')) {
+      return;
+    }
+    var trackName = editingTrackName;
+    var trackIndex = editingTrackIndex;
+    var stagingId = currentStaging ? currentStaging.stagingId : null;
+    importDeleteBtn.disabled = true;
+    importSaveBtn.disabled = true;
+    importCancelBtn.disabled = true;
+    setImportStatus('Deleting…', 'live');
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/tracks/' + encodeURIComponent(trackName),
+      { method: 'DELETE' }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('delete failed');
+        }
+        if (trackIndex !== null && trackIndex >= 0 && trackIndex < tracks.length) {
+          tracks.splice(trackIndex, 1);
+        } else {
+          var i = tracks.indexOf(trackName);
+          if (i >= 0) {
+            tracks.splice(i, 1);
+          }
+        }
+        missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
+        renderTracks();
+        if (stagingId) {
+          return discardStaging(stagingId);
+        }
+      })
+      .then(function () {
+        return flushSave();
+      })
+      .then(function () {
+        closeImportModal();
+      })
+      .catch(function () {
+        setImportStatus('Delete failed', 'dead');
+      })
+      .finally(function () {
+        importDeleteBtn.disabled = false;
+        importSaveBtn.disabled = false;
+        importCancelBtn.disabled = false;
+      });
   });
 
   window.addEventListener('beforeunload', function () {
@@ -853,5 +1482,17 @@
     startFileImport(files);
   });
 
+  volumeSlider.addEventListener('input', function () {
+    var level = Number(volumeSlider.value);
+    volumeValue.textContent = formatVolume(level);
+    queueVolumeSave(level);
+  });
+
+  trackList.setAttribute('aria-label', 'Tracks, drag to reorder');
+  setupTrackListPointerReorder();
+
   refreshCardList();
+  loadVolume();
+  refreshPlaybackState();
+  startPlaybackPoll();
 })();
