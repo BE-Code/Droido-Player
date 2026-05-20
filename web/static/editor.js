@@ -31,7 +31,9 @@
   var urlFetchStatus = document.getElementById('url-fetch-status');
   var importModal = document.getElementById('import-modal');
   var importQueueLabel = document.getElementById('import-queue-label');
-  var importFilename = document.getElementById('import-filename');
+  var importFileStem = document.getElementById('import-file-stem');
+  var importFileExt = document.getElementById('import-file-ext');
+  var importFilenameHint = document.getElementById('import-filename-hint');
   var importAudio = document.getElementById('import-audio');
   var importStatus = document.getElementById('import-status');
   var importSaveBtn = document.getElementById('import-save-btn');
@@ -418,11 +420,25 @@
     return normalizeInFlight;
   }
 
+  function splitFileName(name) {
+    var i = name.lastIndexOf('.');
+    if (i <= 0) {
+      return { stem: name, ext: '' };
+    }
+    return { stem: name.slice(0, i), ext: name.slice(i) };
+  }
+
   function openImportModal(staging, queueIndex, queueTotal) {
     currentStaging = staging;
     selectedVariant = 'original';
     normalizedUrl = staging.normalizedUrl || null;
-    importFilename.textContent = staging.originalName;
+    var parts = splitFileName(staging.originalName);
+    importFileStem.value = parts.stem;
+    importFileExt.textContent = parts.ext || '';
+    importFileExt.hidden = !parts.ext;
+    importFilenameHint.textContent = parts.ext
+      ? 'Extension stays the same; edit the name before it.'
+      : 'Edit the file name (no extension on this file).';
     if (queueTotal > 1) {
       importQueueLabel.textContent = 'File ' + (queueIndex + 1) + ' of ' + queueTotal;
       importQueueLabel.hidden = false;
@@ -535,6 +551,7 @@
         body: JSON.stringify({
           choice: selectedVariant,
           originalName: currentStaging.originalName,
+          fileStem: importFileStem.value,
         }),
       }
     )

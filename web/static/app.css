@@ -194,10 +194,26 @@ label {
   line-height: 1.4;
 }
 
-.import-filename {
+.import-filename-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0 0.35rem;
+}
+
+.import-file-stem {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-file-ext {
+  flex-shrink: 0;
   font-weight: 600;
-  word-break: break-all;
-  margin: 0 0 0.5rem;
+  color: #555;
+}
+
+.import-filename-hint {
+  margin: 0 0 0.75rem;
 }
 
 .import-audio {

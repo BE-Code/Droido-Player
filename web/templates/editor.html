@@ -85,7 +85,12 @@
       <p class="muted import-hint">
         Normalization evens loudness (e.g. quiet voice vs loud music). Listen below, pick one version, then save — this choice is final.
       </p>
-      <p id="import-filename" class="import-filename"></p>
+      <label for="import-file-stem">Save as</label>
+      <div class="import-filename-row">
+        <input type="text" id="import-file-stem" class="import-file-stem" autocomplete="off" spellcheck="false">
+        <span id="import-file-ext" class="import-file-ext" aria-hidden="true"></span>
+      </div>
+      <p id="import-filename-hint" class="muted import-filename-hint"></p>
       <audio id="import-audio" controls class="import-audio"></audio>
       <div class="segmented" role="group" aria-label="Audio version">
         <button type="button" class="segmented-btn active" data-variant="original">Original</button>

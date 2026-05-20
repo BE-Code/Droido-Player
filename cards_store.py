@@ -236,6 +236,36 @@ def normalized_commit_name(original_name: str) -> str:
     return f'{p.stem}.norm{p.suffix}'
 
 
+def _commit_destination_basename(
+    original_name: str, choice: str, file_stem: str | None
+) -> str | None:
+    """Basename for the committed file; optional file_stem overrides the stem only (extension unchanged)."""
+    fs = None if file_stem is None else str(file_stem).strip()
+    if not fs:
+        if choice == 'original':
+            return sanitize_filename(original_name) or 'audio'
+        return normalized_commit_name(original_name)
+
+    ext = Path(original_name).suffix
+    if ext:
+        candidate = fs + ext
+        safe = sanitize_filename(candidate)
+        if safe is None:
+            return None
+        if Path(safe).suffix.lower() != ext.lower():
+            return None
+        stem = Path(safe).stem
+        if choice == 'original':
+            return safe
+        return f'{stem}.norm{ext}'
+    stem = sanitize_filename(fs)
+    if stem is None:
+        return None
+    if choice == 'original':
+        return stem
+    return f'{stem}.norm'
+
+
 def _yt_dlp_executable() -> str | None:
     exe = _YTDLP_BIN
     if os.path.isfile(exe) and os.access(exe, os.X_OK):
@@ -413,7 +443,14 @@ def discard_staging(tap_id: str, staging_id: str) -> bool:
     return True
 
 
-def commit_staging(tap_id: str, staging_id: str, original_name: str, choice: str) -> str | None:
+def commit_staging(
+    tap_id: str,
+    staging_id: str,
+    original_name: str,
+    choice: str,
+    *,
+    file_stem: str | None = None,
+) -> str | None:
     if choice not in ('original', 'normalized'):
         return None
     folder = card_folder(tap_id)
@@ -427,13 +464,14 @@ def commit_staging(tap_id: str, staging_id: str, original_name: str, choice: str
         return None
     if choice == 'original':
         source = original_path
-        final_basename = sanitize_filename(original_name) or 'audio'
     else:
         norm_path = normalized_path_for_staging(staging_dir, original_name)
         if not norm_path.is_file():
             return None
         source = norm_path
-        final_basename = normalized_commit_name(original_name)
+    final_basename = _commit_destination_basename(original_name, choice, file_stem)
+    if final_basename is None:
+        return None
     final_name = _unique_final_name(folder, final_basename)
     dest = folder / final_name
     shutil.copy2(source, dest)

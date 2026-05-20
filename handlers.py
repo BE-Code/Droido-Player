@@ -291,10 +291,16 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if not isinstance(original_name, str) or not original_name:
                 self._send_json(400, {'error': 'originalName required'})
                 return
+            file_stem = body.get('fileStem')
+            if file_stem is not None and not isinstance(file_stem, str):
+                self._send_json(400, {'error': 'fileStem must be a string'})
+                return
             if choice == 'normalized' and not ffmpeg_available():
                 self._send_json(503, {'error': 'ffmpeg not available'})
                 return
-            filename = commit_staging(card_id, staging_id, original_name, choice)
+            filename = commit_staging(
+                card_id, staging_id, original_name, choice, file_stem=file_stem
+            )
             if filename is None:
                 self._send_json(400, {'error': 'commit failed'})
                 return
