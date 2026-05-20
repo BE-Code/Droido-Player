@@ -25,6 +25,7 @@ from cards_store import (
     normalize_staging,
     resolve_audio_path,
     save_card,
+    validate_file_stem,
 )
 from multipart import parse_file_uploads
 from tapped_server import WAIT_TAP_TIMEOUT_SEC
@@ -385,6 +386,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if choice == 'normalized' and not ffmpeg_available():
                 self._send_json(503, {'error': 'ffmpeg not available'})
                 return
+            if file_stem is not None and str(file_stem).strip():
+                stem_err = validate_file_stem(str(file_stem), original_name)
+                if stem_err:
+                    self._send_json(400, {'error': stem_err})
+                    return
             filename = commit_staging(
                 card_id,
                 staging_id,

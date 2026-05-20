@@ -709,6 +709,11 @@ label {
   min-width: 0;
 }
 
+.import-file-stem.invalid {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
 .import-file-ext {
   flex-shrink: 0;
   font-weight: 700;

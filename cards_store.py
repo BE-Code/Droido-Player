@@ -40,6 +40,36 @@ def sanitize_filename(raw: str) -> str | None:
     return key
 
 
+def validate_file_stem(stem: str, original_name: str) -> str | None:
+    """Return an error message if stem is not a valid basename (extension from original_name)."""
+    fs = stem.strip()
+    if not fs:
+        return 'name cannot be empty'
+    if fs in ('.', '..'):
+        return 'name cannot be . or ..'
+    for c in fs:
+        if ord(c) < 32:
+            return 'name cannot include control characters'
+        if c in _UNSAFE_FILENAME_CHARS:
+            return 'name cannot include \\ / : * ? " < > |'
+    if fs.endswith(' ') or fs.endswith('.'):
+        return 'name cannot end with a space or period'
+    ext = Path(original_name).suffix
+    if ext:
+        if fs.lower().endswith(ext.lower()) and len(fs) > len(ext):
+            return 'do not type the file extension in the name field'
+        candidate = fs + ext
+        safe = sanitize_filename(candidate)
+        if safe is None:
+            return 'invalid file name'
+        if Path(safe).suffix.lower() != ext.lower():
+            return 'invalid file name'
+    else:
+        if sanitize_filename(fs) is None:
+            return 'invalid file name'
+    return None
+
+
 def _playlist_path(folder: Path) -> Path:
     return folder / PLAYLIST_NAME
 

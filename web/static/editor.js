@@ -657,7 +657,7 @@
     normalizeInFlight = null;
     updateSegmentUi();
     setImportStatus('', 'muted');
-    importSaveBtn.disabled = false;
+    importFileStem.classList.remove('invalid');
     importDeleteBtn.hidden = true;
     importTitle.textContent = 'Import audio';
     importSaveBtn.textContent = 'Save to card';
@@ -712,12 +712,50 @@
     return normalizeInFlight;
   }
 
+  var invalidFilenameChars = /[\\/:*?"<>|]/;
+  var controlChars = /[\x00-\x1f]/;
+
   function splitFileName(name) {
     var i = name.lastIndexOf('.');
     if (i <= 0) {
       return { stem: name, ext: '' };
     }
     return { stem: name.slice(0, i), ext: name.slice(i) };
+  }
+
+  function validateFileStem(stem, ext) {
+    var fs = (stem || '').trim();
+    if (!fs) {
+      return 'Enter a file name.';
+    }
+    if (fs === '.' || fs === '..') {
+      return 'Name cannot be . or ..';
+    }
+    if (invalidFilenameChars.test(fs)) {
+      return 'Name cannot include \\ / : * ? " < > |';
+    }
+    if (controlChars.test(fs)) {
+      return 'Name cannot include control characters.';
+    }
+    if (/[.\s]$/.test(fs)) {
+      return 'Name cannot end with a space or period.';
+    }
+    if (ext && fs.toLowerCase().endsWith(ext.toLowerCase()) && fs.length > ext.length) {
+      return 'Do not type the extension — it is shown beside the name.';
+    }
+    return null;
+  }
+
+  function refreshImportFilenameState() {
+    var ext = importFileExt.textContent || '';
+    var nameErr = validateFileStem(importFileStem.value, ext);
+    var normBlocked = selectedVariant === 'normalized' && !normalizedUrl;
+    importFileStem.classList.toggle('invalid', !!nameErr);
+    importSaveBtn.disabled = !!nameErr || normBlocked;
+    if (nameErr) {
+      setImportStatus(nameErr, 'dead');
+    }
+    return !nameErr;
   }
 
   function openImportModal(staging, queueIndex, queueTotal, mode) {
@@ -734,8 +772,8 @@
     importFileExt.textContent = parts.ext || '';
     importFileExt.hidden = !parts.ext;
     importFilenameHint.textContent = parts.ext
-      ? 'Extension stays the same; edit the name before it.'
-      : 'Edit the file name (no extension on this file).';
+      ? 'Use letters, numbers, spaces, dashes, and underscores. No \\ / : * ? " < > | and do not type the extension.'
+      : 'Use letters, numbers, spaces, dashes, and underscores. No \\ / : * ? " < > |';
     if (queueTotal > 1) {
       importQueueLabel.textContent = 'File ' + (queueIndex + 1) + ' of ' + queueTotal;
       importQueueLabel.hidden = false;
@@ -746,7 +784,6 @@
     updateImportAudioSrc();
     importModal.hidden = false;
     setImportStatus('', 'muted');
-    importSaveBtn.disabled = false;
     if (stagingMode === 'edit') {
       importTitle.textContent = 'Edit track';
       importSaveBtn.textContent = 'Save changes';
@@ -756,7 +793,18 @@
       importSaveBtn.textContent = 'Save to card';
       importDeleteBtn.hidden = true;
     }
+    refreshImportFilenameState();
   }
+
+  importFileStem.addEventListener('input', function () {
+    if (!currentStaging) {
+      return;
+    }
+    var valid = refreshImportFilenameState();
+    if (valid) {
+      setImportStatus('', 'muted');
+    }
+  });
 
   function openTrackEdit(trackName, trackIndex) {
     if (!currentId) {
@@ -851,8 +899,8 @@
             updateImportAudioSrc();
           })
           .finally(function () {
-            importSaveBtn.disabled = selectedVariant === 'normalized' && !normalizedUrl;
             segmentBtns.forEach(function (b) { b.disabled = false; });
+            refreshImportFilenameState();
           });
         return;
       }
@@ -860,7 +908,7 @@
       updateSegmentUi();
       updateImportAudioSrc();
       setImportStatus('', 'muted');
-      importSaveBtn.disabled = false;
+      refreshImportFilenameState();
     });
   });
 
@@ -870,6 +918,9 @@
     }
     if (selectedVariant === 'normalized' && !normalizedUrl) {
       setImportStatus('Wait for normalization or choose Original', 'dead');
+      return;
+    }
+    if (!refreshImportFilenameState()) {
       return;
     }
     importSaveBtn.disabled = true;
@@ -893,10 +944,20 @@
       }
     )
       .then(function (res) {
-        if (!res.ok) {
-          throw new Error('commit failed');
-        }
-        return res.json();
+        return res.json().then(function (data) {
+          if (!res.ok) {
+            throw new Error((data && data.error) || 'commit failed');
+          }
+          return data;
+        }).catch(function (err) {
+          if (err && err.message) {
+            throw err;
+          }
+          if (!res.ok) {
+            throw new Error('commit failed');
+          }
+          throw err;
+        });
       })
       .then(function (data) {
         if (stagingMode === 'edit' && editingTrackIndex !== null) {
@@ -917,9 +978,9 @@
           importCancelBtn.disabled = false;
         });
       })
-      .catch(function () {
-        setImportStatus('Save failed', 'dead');
-        importSaveBtn.disabled = false;
+      .catch(function (err) {
+        setImportStatus((err && err.message) || 'Save failed', 'dead');
+        refreshImportFilenameState();
         importCancelBtn.disabled = false;
       });
   });
