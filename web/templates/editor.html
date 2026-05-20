@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Card editor</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="editor">
+  <header class="editor-header">
+    <h1>Card editor</h1>
+  </header>
+
+  <section class="panel">
+    <label for="card-select">Open card</label>
+    <div class="row">
+      <select id="card-select">
+        <option value="">— choose a card —</option>
+      </select>
+      <button type="button" id="scan-btn">Scan NFC</button>
+    </div>
+    <p id="scan-status" class="muted" hidden></p>
+  </section>
+
+  <section id="editor-panel" class="panel" hidden>
+    <p class="muted card-id-label">Card id: <code id="card-id"></code></p>
+
+    <label for="card-title">Title</label>
+    <input type="text" id="card-title" placeholder="Optional display name" autocomplete="off">
+
+    <div class="toolbar">
+      <button type="button" id="save-btn">Save</button>
+      <button type="button" id="play-btn">Play</button>
+      <button type="button" id="stop-btn" class="secondary">Stop</button>
+    </div>
+    <p id="editor-status" class="muted"></p>
+
+    <h2 class="tracks-heading">Tracks</h2>
+    <p id="tracks-empty" class="muted">No tracks yet. Add audio below.</p>
+    <ol id="track-list" class="track-list"></ol>
+
+    <button type="button" id="add-audio-btn" class="btn secondary add-audio-trigger">Add audio</button>
+    <input type="file" id="file-input" accept="audio/*" multiple hidden>
+  </section>
+
+  <div id="add-audio-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="add-audio"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="add-audio-title">
+      <h2 id="add-audio-title">Add audio</h2>
+      <div id="add-audio-choice">
+        <p class="muted">Record a clip, choose files, or paste a video/audio page URL (requires <code>yt-dlp</code> on the device).</p>
+        <div class="add-audio-options">
+          <button type="button" id="record-option-btn">Record</button>
+          <button type="button" id="upload-option-btn" class="secondary">Upload file</button>
+          <button type="button" id="url-option-btn" class="secondary">From URL</button>
+        </div>
+        <button type="button" id="add-audio-cancel-btn" class="secondary add-audio-cancel">Cancel</button>
+      </div>
+      <div id="add-audio-url" hidden>
+        <label for="audio-url-input">Page or media URL</label>
+        <input type="url" id="audio-url-input" placeholder="https://…" autocomplete="off" inputmode="url">
+        <p id="url-fetch-status" class="muted" hidden></p>
+        <div class="toolbar add-audio-url-actions">
+          <button type="button" id="url-fetch-btn">Download</button>
+          <button type="button" id="url-back-btn" class="secondary">Back</button>
+        </div>
+      </div>
+      <div id="add-audio-record" hidden>
+        <p id="record-status" class="muted">Tap Start, then speak. Tap Stop when finished.</p>
+        <div class="toolbar record-toolbar">
+          <button type="button" id="record-start-btn">Start</button>
+          <button type="button" id="record-stop-btn" hidden>Stop</button>
+        </div>
+        <button type="button" id="record-back-btn" class="secondary">Back</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="import-modal" class="modal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="import-title">
+      <h2 id="import-title">Import audio</h2>
+      <p id="import-queue-label" class="muted"></p>
+      <p class="muted import-hint">
+        Normalization evens loudness (e.g. quiet voice vs loud music). It is recommended for voice recordings.
+      </p>
+      <label for="import-file-stem">Save as</label>
+      <div class="import-filename-row">
+        <input type="text" id="import-file-stem" class="import-file-stem" autocomplete="off" spellcheck="false">
+        <span id="import-file-ext" class="import-file-ext" aria-hidden="true"></span>
+      </div>
+      <p id="import-filename-hint" class="muted import-filename-hint"></p>
+      <audio id="import-audio" controls class="import-audio"></audio>
+      <div class="segmented" role="group" aria-label="Audio version">
+        <button type="button" class="segmented-btn active" data-variant="original">Original</button>
+        <button type="button" class="segmented-btn" data-variant="normalized">Normalized</button>
+      </div>
+      <p id="import-status" class="muted"></p>
+      <div class="toolbar modal-actions">
+        <button type="button" id="import-save-btn">Save to card</button>
+        <button type="button" id="import-cancel-btn" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/editor.js"></script>
+</body>
+</html>

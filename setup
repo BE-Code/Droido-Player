@@ -6,7 +6,8 @@ pkg update -y
 DEBIAN_FRONTEND=noninteractive \
 pkg upgrade -y -o Dpkg::Options::="--force-confold"
 
-pkg install -y python mpv termux-api
+pkg install -y python mpv termux-api ffmpeg
+pkg install -y yt-dlp || python3 -m pip install --user yt-dlp
 
 termux-setup-storage
 APPDIR=~/storage/shared/Droido-Player-Data

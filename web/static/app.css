@@ -25,13 +25,265 @@ body {
   font-size: 0.85rem;
 }
 
-button {
+button,
+.btn {
   font: inherit;
   padding: 0.5rem 1rem;
   cursor: pointer;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #f5f5f5;
 }
 
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+button.secondary,
+.btn.secondary {
+  background: #fff;
+}
+
+button.danger,
+.icon-btn.danger {
+  color: #a00;
+}
+
+input[type="text"],
+select {
+  font: inherit;
+  padding: 0.45rem 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.panel {
+  margin-bottom: 1.25rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.card-id-label code {
+  word-break: break-all;
+}
+
+.tracks-heading {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.track-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.35rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.track-item.missing .track-name {
+  color: #a00;
+  text-decoration: line-through;
+}
+
+.track-item.dragging {
+  opacity: 0.5;
+}
+
+.track-name {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.track-actions {
+  display: flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  padding: 0.25rem 0.45rem;
+  min-width: 2rem;
+}
+
+.file-label {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
+.file-label input {
+  display: none;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal-card {
+  position: relative;
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-width: 24rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.import-hint {
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.import-filename-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0 0.35rem;
+}
+
+.import-file-stem {
+  flex: 1;
+  min-width: 0;
+}
+
+.import-file-ext {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: #555;
+}
+
+.import-filename-hint {
+  margin: 0 0 0.75rem;
+}
+
+.import-audio {
+  width: 100%;
+  margin: 0.5rem 0 1rem;
+}
+
+.segmented {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0.75rem;
+}
+
+.segmented-btn {
+  flex: 1;
+  border-radius: 0;
+  margin: 0;
+}
+
+.segmented-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.segmented-btn:last-child {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.segmented-btn.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
+.modal-actions {
+  margin-top: 0.5rem;
+}
+
+.add-audio-trigger {
+  margin-top: 0.5rem;
+}
+
+.add-audio-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.add-audio-options button {
+  width: 100%;
+}
+
+.add-audio-cancel {
+  width: 100%;
+}
+
+#add-audio-url {
+  margin-top: 0.5rem;
+}
+
+#add-audio-url .add-audio-url-actions {
+  margin-top: 0.75rem;
+}
+
+.record-toolbar {
+  margin: 0.75rem 0;
+}
+
+#record-status.live {
+  color: #a00;
+  font-weight: 600;
 }
