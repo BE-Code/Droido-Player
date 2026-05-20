@@ -220,6 +220,13 @@ def normalized_path_for_staging(staging_dir: Path, original_name: str) -> Path:
     return normalized_output_path(original)
 
 
+def normalized_commit_name(original_name: str) -> str:
+    """Final on-disk name for a normalized track (e.g. voice.m4a → voice.norm.m4a)."""
+    safe = sanitize_filename(original_name) or 'audio'
+    p = Path(safe)
+    return f'{p.stem}.norm{p.suffix}'
+
+
 def create_staging_upload(tap_id: str, original_name: str, data: bytes) -> dict | None:
     folder = ensure_card_folder(tap_id)
     if folder is None:
@@ -313,7 +320,7 @@ def commit_staging(tap_id: str, staging_id: str, original_name: str, choice: str
         if not norm_path.is_file():
             return None
         source = norm_path
-        final_basename = norm_path.name
+        final_basename = normalized_commit_name(original_name)
     final_name = _unique_final_name(folder, final_basename)
     dest = folder / final_name
     shutil.copy2(source, dest)
