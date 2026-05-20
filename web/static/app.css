@@ -128,6 +128,55 @@ label {
   background: #444;
 }
 
+.playback-btn-primary .playback-icon-play,
+.playback-btn-primary .playback-icon-pause {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.playback-btn-primary .playback-icon-pause {
+  display: none;
+  width: 0.9em;
+  height: 0.9em;
+  position: relative;
+}
+
+.playback-btn-primary .playback-icon-pause::before,
+.playback-btn-primary .playback-icon-pause::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 0.2em;
+  height: 0.7em;
+  margin-top: -0.35em;
+  background: currentColor;
+  border-radius: 1px;
+}
+
+.playback-btn-primary .playback-icon-pause::before {
+  left: 0.15em;
+}
+
+.playback-btn-primary .playback-icon-pause::after {
+  right: 0.15em;
+}
+
+.playback-btn-primary.is-playing .playback-icon-play {
+  display: none;
+}
+
+.playback-btn-primary.is-playing .playback-icon-pause {
+  display: inline-block;
+}
+
+.playback-icon-stop {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  background: currentColor;
+  vertical-align: middle;
+}
+
 .playback-status {
   flex: 1 1 100%;
   margin: 0;

@@ -14,7 +14,13 @@
   <section class="playback-bar panel" aria-label="Playback controls">
     <div class="playback-transport">
       <button type="button" id="playback-back-btn" class="playback-btn" title="Previous track" aria-label="Previous track">⏮</button>
-      <button type="button" id="playback-play-pause-btn" class="playback-btn playback-btn-primary" title="Play" aria-label="Play">▶</button>
+      <button type="button" id="playback-play-pause-btn" class="playback-btn playback-btn-primary" title="Resume" aria-label="Resume" disabled>
+        <span class="playback-icon-play" aria-hidden="true">▶</span>
+        <span class="playback-icon-pause" aria-hidden="true"></span>
+      </button>
+      <button type="button" id="playback-stop-btn" class="playback-btn" title="Stop" aria-label="Stop" disabled>
+        <span class="playback-icon-stop" aria-hidden="true"></span>
+      </button>
       <button type="button" id="playback-forward-btn" class="playback-btn" title="Next track" aria-label="Next track">⏭</button>
     </div>
     <div class="volume-controls" aria-label="Media volume">

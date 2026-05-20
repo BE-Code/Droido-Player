@@ -10,6 +10,7 @@
   var editorStatus = document.getElementById('editor-status');
   var playbackBackBtn = document.getElementById('playback-back-btn');
   var playbackPlayPauseBtn = document.getElementById('playback-play-pause-btn');
+  var playbackStopBtn = document.getElementById('playback-stop-btn');
   var playbackForwardBtn = document.getElementById('playback-forward-btn');
   var playbackStatus = document.getElementById('playback-status');
   var tracksEmpty = document.getElementById('tracks-empty');
@@ -326,21 +327,21 @@
       });
   }
 
-  function updatePlayPauseUi() {
-    if (playbackActive && !playbackPaused) {
-      playbackPlayPauseBtn.textContent = '⏸';
+  function updatePlaybackTransportUi() {
+    var playing = playbackActive && !playbackPaused;
+    playbackPlayPauseBtn.classList.toggle('is-playing', playing);
+    playbackStopBtn.disabled = !playbackActive;
+    if (playing) {
       playbackPlayPauseBtn.title = 'Pause';
       playbackPlayPauseBtn.setAttribute('aria-label', 'Pause');
       playbackPlayPauseBtn.disabled = false;
-    } else if (playbackActive && playbackPaused) {
-      playbackPlayPauseBtn.textContent = '▶';
+    } else if (playbackActive) {
       playbackPlayPauseBtn.title = 'Resume';
       playbackPlayPauseBtn.setAttribute('aria-label', 'Resume');
       playbackPlayPauseBtn.disabled = false;
     } else {
-      playbackPlayPauseBtn.textContent = '▶';
-      playbackPlayPauseBtn.title = 'Nothing playing';
-      playbackPlayPauseBtn.setAttribute('aria-label', 'Nothing playing');
+      playbackPlayPauseBtn.title = 'Resume';
+      playbackPlayPauseBtn.setAttribute('aria-label', 'Resume');
       playbackPlayPauseBtn.disabled = true;
     }
   }
@@ -348,7 +349,7 @@
   function applyPlaybackState(data) {
     playbackActive = !!(data && data.active);
     playbackPaused = !playbackActive || !!(data && data.paused);
-    updatePlayPauseUi();
+    updatePlaybackTransportUi();
   }
 
   function refreshPlaybackState() {
@@ -363,7 +364,7 @@
       .catch(function () {
         playbackActive = false;
         playbackPaused = true;
-        updatePlayPauseUi();
+        updatePlaybackTransportUi();
       });
   }
 
@@ -394,7 +395,7 @@
         setStatus(editorStatus, 'Playing card…', 'live');
         playbackActive = true;
         playbackPaused = false;
-        updatePlayPauseUi();
+        updatePlaybackTransportUi();
         startPlaybackPoll();
         return refreshPlaybackState();
       })
@@ -513,6 +514,16 @@
   });
 
   playbackPlayPauseBtn.addEventListener('click', togglePlayPause);
+
+  playbackStopBtn.addEventListener('click', function () {
+    postPlayback('/api/stop')
+      .then(function () {
+        setStatus(playbackStatus, 'Stopped', 'muted');
+      })
+      .catch(function (err) {
+        setStatus(playbackStatus, err.message || 'Stop failed', 'dead');
+      });
+  });
 
   function setImportStatus(text, kind) {
     setStatus(importStatus, text, kind);
