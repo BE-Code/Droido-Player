@@ -1,5 +1,5 @@
 :root {
-  --cream: #fff0e0;
+  --cream: #fffaef;
   --white: #ffffff;
   --ink: #3d2e38;
   --ink-soft: #5c4a55;
@@ -44,7 +44,14 @@
   --indigo-hover: var(--grape-hover);
   --highlight: var(--bubblegum);
 
-  --bg: #fff0e0;
+  --bg: var(--cream);
+  --bg-gradient: linear-gradient(
+    145deg,
+    #fff0b0 0%,
+    #ffffff 32%,
+    #ffd6ea 68%,
+    #d8ccff 100%
+  );
   --bg-elevated: var(--white);
   --bg-surface: #fff6e8;
   --bg-hover: #fff0d8;
@@ -86,7 +93,6 @@
 
 html {
   color-scheme: light;
-  background-color: var(--bg);
 }
 
 body {
@@ -94,7 +100,9 @@ body {
   font-size: 1rem;
   line-height: 1.55;
   color: var(--text);
-  background-color: var(--bg);
+  background-color: #fff0b0;
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
   margin: 0;
   min-height: 100vh;
   padding: 1.5rem 1.25rem 2.5rem;
@@ -330,21 +338,25 @@ label {
   align-items: stretch;
   gap: 0.85rem;
   padding: 1rem 1.1rem;
-  background: var(--white);
+  background-color: var(--white);
+  background-image: var(--bg-gradient);
   border: 2px solid var(--sky-deep);
   border-radius: var(--radius-lg);
   box-shadow:
     var(--shadow-md),
-    0 1px 0 rgba(61, 54, 84, 0.06);
+    0 1px 0 rgba(61, 54, 84, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .playback-bar.panel {
   padding: 1rem 1.1rem;
-  background: var(--white);
+  background-color: var(--white);
+  background-image: var(--bg-gradient);
   border-color: var(--sky-deep);
   box-shadow:
     var(--shadow-md),
-    0 1px 0 rgba(61, 54, 84, 0.06);
+    0 1px 0 rgba(61, 54, 84, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .playback-transport {
