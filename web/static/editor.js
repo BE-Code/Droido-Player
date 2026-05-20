@@ -5,7 +5,6 @@
   var editorPanel = document.getElementById('editor-panel');
   var cardIdEl = document.getElementById('card-id');
   var cardTitleEl = document.getElementById('card-title');
-  var saveBtn = document.getElementById('save-btn');
   var playCardBtn = document.getElementById('play-card-btn');
   var editorStatus = document.getElementById('editor-status');
   var playbackBackBtn = document.getElementById('playback-back-btn');
@@ -51,7 +50,8 @@
   var currentId = null;
   var tracks = [];
   var missing = [];
-  var dirty = false;
+  var saveTimer = null;
+  var savePromise = null;
   var importQueue = [];
   var importTotal = 0;
   var currentStaging = null;
@@ -148,14 +148,61 @@
     }, 150);
   }
 
-  function markDirty() {
-    dirty = true;
-    setStatus(editorStatus, 'Unsaved changes', 'live');
+  function persistCard() {
+    if (!currentId) {
+      return Promise.resolve();
+    }
+    if (savePromise) {
+      return savePromise;
+    }
+    setStatus(editorStatus, 'Saving…', 'live');
+    savePromise = fetch('/api/cards/' + encodeURIComponent(currentId), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload()),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('save failed');
+        }
+        return res.json();
+      })
+      .then(function (card) {
+        tracks = card.tracks.slice();
+        missing = card.missing || [];
+        renderTracks();
+        setStatus(editorStatus, 'Saved', 'muted');
+        return refreshCardList(currentId);
+      })
+      .catch(function () {
+        setStatus(editorStatus, 'Save failed', 'dead');
+        throw new Error('save failed');
+      })
+      .finally(function () {
+        savePromise = null;
+      });
+    return savePromise;
   }
 
-  function clearDirty() {
-    dirty = false;
-    setStatus(editorStatus, 'Saved', 'muted');
+  function queueSave() {
+    if (!currentId) {
+      return;
+    }
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+    }
+    saveTimer = setTimeout(function () {
+      saveTimer = null;
+      persistCard();
+    }, 400);
+  }
+
+  function flushSave() {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    return persistCard();
   }
 
   function cardDisplayLabel(title, id) {
@@ -306,11 +353,15 @@
     }
     var item = tracks.splice(from, 1)[0];
     tracks.splice(to, 0, item);
-    markDirty();
+    queueSave();
     renderTracks();
   }
 
   function openCard(id) {
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
     currentId = id;
     return fetch('/api/cards/' + encodeURIComponent(id))
       .then(function (res) {
@@ -323,7 +374,6 @@
         cardTitleEl.value = card.title || '';
         tracks = card.tracks.slice();
         missing = card.missing || [];
-        dirty = false;
         editorPanel.hidden = false;
         renderTracks();
         updateCardIdDisplay();
@@ -337,37 +387,6 @@
       title: cardTitleEl.value,
       tracks: tracks,
     };
-  }
-
-  function save() {
-    if (!currentId) {
-      return Promise.resolve();
-    }
-    saveBtn.disabled = true;
-    return fetch('/api/cards/' + encodeURIComponent(currentId), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload()),
-    })
-      .then(function (res) {
-        if (!res.ok) {
-          throw new Error('save failed');
-        }
-        return res.json();
-      })
-      .then(function (card) {
-        tracks = card.tracks.slice();
-        missing = card.missing || [];
-        renderTracks();
-        clearDirty();
-        return refreshCardList(currentId);
-      })
-      .catch(function () {
-        setStatus(editorStatus, 'Save failed', 'dead');
-      })
-      .finally(function () {
-        saveBtn.disabled = false;
-      });
   }
 
   function updatePlaybackTransportUi() {
@@ -430,31 +449,36 @@
       }
       return Promise.reject(new Error('no card'));
     }
-    if (cardId === currentId && dirty) {
-      if (statusEl === playbackStatus) {
-        setPlaybackError('Save first — play uses the saved playlist only');
-      } else {
-        setStatus(statusEl, 'Save first — play uses the saved playlist only', 'dead');
-      }
-      return Promise.reject(new Error('unsaved'));
-    }
-    return fetch('/api/cards/' + encodeURIComponent(cardId) + '/play', {
-      method: 'POST',
-    })
-      .then(function (res) {
-        if (!res.ok && res.status !== 204) {
-          throw new Error('play failed');
-        }
-        nowPlayingId = cardId;
-        if (statusEl === playbackStatus) {
-          clearPlaybackStatus();
-        } else {
-          setStatus(statusEl, 'Playing…', 'live');
-        }
-        startPlaybackPoll();
-        return refreshPlaybackState();
+    var playRequest = cardId === currentId
+      ? flushSave().catch(function () { throw new Error('save failed'); })
+      : Promise.resolve();
+    return playRequest.then(function () {
+      return fetch('/api/cards/' + encodeURIComponent(cardId) + '/play', {
+        method: 'POST',
       })
-      .catch(function () {
+        .then(function (res) {
+          if (!res.ok && res.status !== 204) {
+            throw new Error('play failed');
+          }
+          nowPlayingId = cardId;
+          if (statusEl === playbackStatus) {
+            clearPlaybackStatus();
+          } else {
+            setStatus(statusEl, 'Playing…', 'live');
+          }
+          startPlaybackPoll();
+          return refreshPlaybackState();
+        });
+    })
+      .catch(function (err) {
+        if (err && err.message === 'save failed') {
+          if (statusEl === playbackStatus) {
+            setPlaybackError('Could not save card before playing');
+          } else {
+            setStatus(statusEl, 'Could not save card before playing', 'dead');
+          }
+          throw err;
+        }
         if (statusEl === playbackStatus) {
           setPlaybackError('Play failed');
         } else {
@@ -512,13 +536,19 @@
 
   cardSelect.addEventListener('change', function () {
     var id = cardSelect.value;
-    if (!id) {
-      editorPanel.hidden = true;
-      currentId = null;
-      return;
-    }
-    openCard(id).catch(function () {
-      setStatus(editorStatus, 'Could not load card', 'dead');
+    var previousId = currentId;
+    flushSave().finally(function () {
+      if (!id) {
+        editorPanel.hidden = true;
+        currentId = null;
+        return;
+      }
+      if (id === previousId && currentId === id) {
+        return;
+      }
+      openCard(id).catch(function () {
+        setStatus(editorStatus, 'Could not load card', 'dead');
+      });
     });
   });
 
@@ -542,7 +572,9 @@
           return;
         }
         setStatus(scanStatus, 'Tap received', 'muted');
-        return refreshCardList(data.id).then(function () {
+        return flushSave().then(function () {
+          return refreshCardList(data.id);
+        }).then(function () {
           return openCard(data.id);
         });
       })
@@ -555,12 +587,11 @@
   });
 
   cardTitleEl.addEventListener('input', function () {
-    markDirty();
+    queueSave();
     updateCardIdDisplay();
     syncCardSelectOptionLabel();
   });
 
-  saveBtn.addEventListener('click', save);
   playCardBtn.addEventListener('click', function () {
     playCard().catch(function () {});
   });
@@ -757,7 +788,7 @@
   function processImportQueue() {
     if (!importQueue.length) {
       importTotal = 0;
-      setStatus(editorStatus, 'Done adding files — save playlist when ready', 'muted');
+      setStatus(editorStatus, 'Done adding files', 'muted');
       return;
     }
     var file = importQueue.shift();
@@ -876,15 +907,15 @@
         } else if (tracks.indexOf(data.filename) < 0) {
           tracks.push(data.filename);
         }
-        markDirty();
         renderTracks();
-        if (stagingMode === 'edit') {
-          closeImportModal();
+        return flushSave().then(function () {
+          if (stagingMode === 'edit') {
+            closeImportModal();
+          } else {
+            finishImportAndNext();
+          }
           importCancelBtn.disabled = false;
-        } else {
-          finishImportAndNext();
-          importCancelBtn.disabled = false;
-        }
+        });
       })
       .catch(function () {
         setImportStatus('Save failed', 'dead');
@@ -946,15 +977,16 @@
           }
         }
         missing = missing.filter(function (m) { return tracks.indexOf(m) >= 0; });
-        markDirty();
         renderTracks();
         if (stagingId) {
           return discardStaging(stagingId);
         }
       })
       .then(function () {
+        return flushSave();
+      })
+      .then(function () {
         closeImportModal();
-        setStatus(editorStatus, 'Track deleted — save playlist when ready', 'muted');
       })
       .catch(function () {
         setImportStatus('Delete failed', 'dead');

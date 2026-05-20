@@ -509,25 +509,6 @@ label {
   margin-top: 1rem;
 }
 
-#save-btn {
-  background: var(--sun);
-  color: var(--ink);
-  border-color: var(--sun-deep);
-  box-shadow: 0 4px 0 var(--sun-deep);
-}
-
-#save-btn:hover:not(:disabled) {
-  background: #ffc94d;
-  border-color: var(--sun-deep);
-  transform: translateY(-2px);
-  box-shadow: 0 5px 0 var(--sun-deep), var(--shadow-sm);
-}
-
-#save-btn:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 var(--sun-deep);
-}
-
 #scan-btn {
   flex-shrink: 0;
   white-space: nowrap;
