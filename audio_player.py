@@ -31,6 +31,13 @@ class AudioPlayer:
         """Set pause on/off."""
         return False
 
+    def toggle_pause(self) -> bool:
+        """Toggle pause when playback is active."""
+        state = self.get_playback_state()
+        if not state.get('active') or state.get('stopped'):
+            return False
+        return self.set_pause(not state.get('paused'))
+
     def forward(self) -> bool:
         """Skip forward one track."""
         return False

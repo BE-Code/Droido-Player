@@ -254,17 +254,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'pause':
-            if not audioPlayer.set_pause(True):
-                self._send_json(503, {'error': 'pause failed'})
-                return
-            self.send_response(204)
-            self.end_headers()
-            return
-
-        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'resume':
-            if not audioPlayer.set_pause(False):
-                self._send_json(503, {'error': 'resume failed'})
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'toggle':
+            if not audioPlayer.toggle_pause():
+                self._send_json(503, {'error': 'toggle failed'})
                 return
             self.send_response(204)
             self.end_headers()

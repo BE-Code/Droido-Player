@@ -639,19 +639,11 @@
   }
 
   function togglePlayPause() {
-    if (playbackActive && !playbackPaused) {
-      postPlayback('/api/pause')
+    if (playbackActive) {
+      postPlayback('/api/toggle')
         .then(clearPlaybackStatus)
         .catch(function (err) {
-          setPlaybackError(err.message || 'Pause failed');
-        });
-      return;
-    }
-    if (playbackActive && playbackPaused) {
-      postPlayback('/api/resume')
-        .then(clearPlaybackStatus)
-        .catch(function (err) {
-          setPlaybackError(err.message || 'Resume failed');
+          setPlaybackError(err.message || 'Toggle failed');
         });
       return;
     }
