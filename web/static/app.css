@@ -1,23 +1,19 @@
 :root {
-  /* Rainbow core — same stops as the title underline */
+  /* Rainbow core — title underline; use on filled buttons */
   --sun: #ffc42e;
   --sun-deep: #e8a800;
-  --sun-muted: #fff0b0;
+  --sun-hover: #ffd04a;
   --coral: #ff5a8a;
   --coral-deep: #e8366e;
-  --coral-muted: #ffd6ea;
   --coral-hover: #ff78a0;
   --mint: #6ee06a;
   --mint-deep: #4bc947;
-  --mint-muted: #daf8d4;
   --mint-hover: #86ec82;
   --sky: #5b8cff;
   --sky-deep: #3d6de8;
-  --sky-muted: #d4e4ff;
   --sky-hover: #7aa8ff;
   --grape: #b070f0;
   --grape-deep: #9348e0;
-  --grape-muted: #e4d4ff;
   --grape-hover: #c48af8;
 
   --rainbow: linear-gradient(
@@ -28,20 +24,13 @@
     var(--sky) 75%,
     var(--grape) 100%
   );
-  --rainbow-soft: linear-gradient(
-    145deg,
-    var(--sun-muted) 0%,
-    #ffffff 28%,
-    var(--coral-muted) 52%,
-    var(--mint-muted) 72%,
-    var(--grape-muted) 100%
-  );
 
-  --cream: #fffcf7;
+  --cream: #fffaef;
   --white: #ffffff;
   --ink: #3d2e38;
   --ink-soft: #5c4a55;
   --ink-faint: #8f7a85;
+  --bubblegum: #ffc9a8;
 
   /* Aliases used across components */
   --paper: var(--cream);
@@ -50,7 +39,6 @@
   --slate-faint: var(--ink-faint);
   --blue: var(--sky);
   --blue-deep: var(--sky-deep);
-  --blue-muted: var(--sky-muted);
   --orange: var(--sun);
   --orange-deep: var(--sun-deep);
   --teal: var(--mint);
@@ -59,36 +47,41 @@
   --indigo: var(--grape);
   --indigo-deep: var(--grape-deep);
   --indigo-hover: var(--grape-hover);
-  --bubblegum: var(--coral-muted);
-  --highlight: var(--coral-muted);
+  --highlight: var(--bubblegum);
 
   --bg: var(--cream);
-  --bg-gradient: var(--rainbow-soft);
+  --bg-gradient: linear-gradient(
+    145deg,
+    #fff0b0 0%,
+    #ffffff 32%,
+    #ffd6ea 68%,
+    #d8ccff 100%
+  );
   --bg-elevated: var(--white);
-  --bg-surface: color-mix(in srgb, var(--sun-muted) 45%, white);
-  --bg-hover: color-mix(in srgb, var(--sky-muted) 35%, white);
-  --border: color-mix(in srgb, var(--sun-muted) 55%, var(--coral-muted));
-  --border-subtle: color-mix(in srgb, var(--coral-muted) 30%, white);
+  --bg-surface: #fff6e8;
+  --bg-hover: #fff0d8;
+  --border: #f0dcc8;
+  --border-subtle: #f8ebe0;
   --border-fun: var(--sky);
   --text: var(--ink);
   --text-muted: var(--ink-soft);
   --text-faint: var(--ink-faint);
   --accent: var(--sun);
   --accent-deep: var(--sun-deep);
-  --accent-glow: color-mix(in srgb, var(--sun) 38%, transparent);
+  --accent-glow: rgba(255, 196, 46, 0.38);
   --play: var(--mint);
   --play-deep: var(--mint-deep);
-  --play-glow: color-mix(in srgb, var(--mint) 42%, transparent);
-  --success: var(--mint-deep);
-  --danger: var(--coral-deep);
-  --danger-bg: var(--coral-muted);
+  --play-glow: rgba(110, 224, 106, 0.42);
+  --success: #3dbd3d;
+  --danger: #e84d6a;
+  --danger-bg: #ffe8ee;
 
   --radius-sm: 11px;
   --radius-md: 15px;
   --radius-lg: 20px;
   --radius-pill: 999px;
-  --shadow-sm: 0 2px 8px color-mix(in srgb, var(--sky) 20%, transparent);
-  --shadow-md: 0 6px 20px color-mix(in srgb, var(--grape) 18%, transparent);
+  --shadow-sm: 0 2px 8px rgba(91, 140, 255, 0.2);
+  --shadow-md: 0 6px 20px rgba(176, 112, 240, 0.18);
   --shadow-lg: 0 12px 36px rgba(61, 54, 84, 0.14);
   --shadow-pop: 0 4px 0 rgba(61, 54, 84, 0.11);
   --font: 'Nunito', system-ui, sans-serif;
@@ -112,7 +105,7 @@ body {
   font-size: 1rem;
   line-height: 1.55;
   color: var(--text);
-  background-color: var(--sun-muted);
+  background-color: #fff0b0;
   background-image: var(--bg-gradient);
   background-attachment: fixed;
   margin: 0;
@@ -261,7 +254,7 @@ input[type='text']:focus,
 input[type='url']:focus,
 select:focus {
   border-color: var(--sky-deep);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sky) 30%, transparent);
+  box-shadow: 0 0 0 4px rgba(91, 140, 255, 0.28);
   outline: none;
 }
 
@@ -509,7 +502,7 @@ label {
   padding: 0;
   height: 8px;
   appearance: none;
-  background: linear-gradient(90deg, var(--coral-muted), var(--sky-muted));
+  background: linear-gradient(90deg, var(--bubblegum), var(--sky));
   border-radius: var(--radius-pill);
   border: none;
   cursor: pointer;
@@ -522,7 +515,7 @@ label {
   border-radius: 50%;
   background: var(--sun);
   border: 3px solid var(--white);
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--sun) 50%, transparent);
+  box-shadow: 0 2px 6px rgba(255, 196, 46, 0.5);
   cursor: pointer;
   transition: transform var(--transition);
 }
@@ -546,7 +539,7 @@ label {
 }
 
 #volume-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--sky) 40%, transparent);
+  box-shadow: 0 0 0 4px rgba(91, 140, 255, 0.4);
 }
 
 .volume-value {
@@ -647,7 +640,7 @@ label {
 }
 
 .track-item:nth-child(even) {
-  background: var(--bg-surface);
+  background: #fff8f0;
 }
 
 .track-item:last-child {
@@ -693,7 +686,7 @@ label {
 .track-drag-handle:hover,
 .track-drag-handle:focus-visible {
   color: var(--grape-deep);
-  background: color-mix(in srgb, var(--grape) 18%, transparent);
+  background: rgba(176, 112, 240, 0.18);
   outline: none;
 }
 
@@ -913,7 +906,7 @@ body.track-reorder-active .track-list {
   width: 100%;
   border: 3px dashed var(--mint);
   color: var(--mint-deep);
-  background: var(--mint-muted);
+  background: #f0fff8;
   font-family: var(--font-display);
   font-size: 1.05rem;
   box-shadow: none;
@@ -938,40 +931,47 @@ body.track-reorder-active .track-list {
   width: 100%;
 }
 
-#record-option-btn {
+/* Rainbow fills — lemon, strawberry, lime, blueberry, plum (title underline) */
+#url-option-btn,
+#url-fetch-btn {
+  background: var(--sun);
+  color: var(--white);
+  border-color: var(--sun-deep);
+  box-shadow: 0 4px 0 var(--sun-deep);
+}
+
+#url-option-btn:hover:not(:disabled),
+#url-fetch-btn:hover:not(:disabled) {
+  background: var(--sun-hover);
+  border-color: var(--sun-deep);
+}
+
+#record-option-btn,
+#record-start-btn {
   background: var(--coral);
   color: var(--white);
   border-color: var(--coral-deep);
   box-shadow: 0 4px 0 var(--coral-deep);
 }
 
-#record-option-btn:hover:not(:disabled) {
+#record-option-btn:hover:not(:disabled),
+#record-start-btn:hover:not(:disabled) {
   background: var(--coral-hover);
   border-color: var(--coral-deep);
 }
 
-#upload-option-btn {
+#upload-option-btn,
+#import-save-btn {
   background: var(--sky);
   color: var(--white);
   border-color: var(--sky-deep);
   box-shadow: 0 4px 0 var(--sky-deep);
 }
 
-#upload-option-btn:hover:not(:disabled) {
+#upload-option-btn:hover:not(:disabled),
+#import-save-btn:hover:not(:disabled) {
   background: var(--sky-hover);
   border-color: var(--sky-deep);
-}
-
-#url-option-btn {
-  background: var(--grape);
-  color: var(--white);
-  border-color: var(--grape-deep);
-  box-shadow: 0 4px 0 var(--grape-deep);
-}
-
-#url-option-btn:hover:not(:disabled) {
-  background: var(--grape-hover);
-  border-color: var(--grape-deep);
 }
 
 .add-audio-cancel {
@@ -990,18 +990,11 @@ body.track-reorder-active .track-list {
   margin: 0.75rem 0;
 }
 
-#record-start-btn {
-  background: var(--coral);
-  color: var(--white);
-  border-color: var(--coral-deep);
-  box-shadow: 0 4px 0 var(--coral-deep);
-}
-
 #record-stop-btn {
   background: var(--danger);
   color: var(--white);
-  border-color: var(--coral-deep);
-  box-shadow: 0 4px 0 var(--coral-deep);
+  border-color: #c93d58;
+  box-shadow: 0 4px 0 #c93d58;
 }
 
 #record-status.live {
