@@ -305,7 +305,7 @@
       if (isMissing) {
         var removeBtn = document.createElement('button');
         removeBtn.type = 'button';
-        removeBtn.className = 'icon-btn danger';
+        removeBtn.className = 'icon-btn';
         removeBtn.textContent = '×';
         removeBtn.title = 'Remove from playlist';
         removeBtn.setAttribute('aria-label', 'Remove from playlist');
