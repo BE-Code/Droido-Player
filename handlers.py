@@ -224,10 +224,8 @@ class SimpleHandler(BaseHTTPRequestHandler):
             if not isinstance(raw, (int, float)):
                 self._send_json(400, {'error': 'volume must be a number'})
                 return
-            if not set_volume(raw):
-                self._send_json(503, {'error': 'could not set volume'})
-                return
             try:
+                set_volume(raw)
                 self._send_json(200, {'volume': get_volume()})
             except VolumeUnavailable as exc:
                 self._send_json(503, {'error': str(exc)})

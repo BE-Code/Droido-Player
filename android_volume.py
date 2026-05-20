@@ -1,14 +1,10 @@
 """Android media volume via Termux:API (termux-volume)."""
 
-import re
+import json
 import shutil
 import subprocess
 
 STREAM = 'music'
-_LINE_RE = re.compile(
-    r'Stream:\s*(\w+)\s*,\s*Volume:\s*(\d+)\s*,\s*Max:\s*(\d+)',
-    re.IGNORECASE,
-)
 
 
 class VolumeUnavailable(Exception):
@@ -38,20 +34,30 @@ def _run(args: list[str], timeout: float = 5.0) -> str:
     return proc.stdout or ''
 
 
-def _parse_streams(text: str) -> dict[str, tuple[int, int]]:
-    streams: dict[str, tuple[int, int]] = {}
-    for line in text.splitlines():
-        match = _LINE_RE.search(line)
-        if match:
-            streams[match.group(1).lower()] = (int(match.group(2)), int(match.group(3)))
-    return streams
+def _list_streams() -> list[dict]:
+    text = _run([]).strip()
+    if not text:
+        raise VolumeUnavailable('empty response from termux-volume')
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise VolumeUnavailable(f'invalid termux-volume output: {exc}') from exc
+    if not isinstance(data, list):
+        raise VolumeUnavailable('expected JSON array from termux-volume')
+    return [item for item in data if isinstance(item, dict)]
 
 
 def _music_levels() -> tuple[int, int]:
-    streams = _parse_streams(_run([]))
-    if STREAM not in streams:
-        raise VolumeUnavailable(f'{STREAM} stream not found')
-    return streams[STREAM]
+    for item in _list_streams():
+        if item.get('stream') != STREAM:
+            continue
+        try:
+            current = int(item['volume'])
+            max_vol = int(item['max_volume'])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise VolumeUnavailable('invalid music stream entry') from exc
+        return current, max_vol
+    raise VolumeUnavailable(f'{STREAM} stream not found')
 
 
 def get_volume() -> float:
@@ -61,11 +67,13 @@ def get_volume() -> float:
     return round(100.0 * current / max_vol)
 
 
-def set_volume(percent: float) -> bool:
-    try:
-        _, max_vol = _music_levels()
-        level = round(_clamp_percent(percent) / 100.0 * max_vol)
-        _run([STREAM, str(level)])
-        return True
-    except VolumeUnavailable:
-        return False
+def set_volume(percent: float) -> None:
+    _, max_vol = _music_levels()
+    level = round(_clamp_percent(percent) / 100.0 * max_vol)
+    _run([STREAM, str(level)])
+    current, _ = _music_levels()
+    if current != level:
+        raise VolumeUnavailable(
+            'device did not apply music volume change '
+            '(some phones block this stream; use hardware volume keys)'
+        )

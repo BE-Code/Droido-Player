@@ -99,17 +99,21 @@
       body: JSON.stringify({ volume: level }),
     })
       .then(function (res) {
-        if (!res.ok) {
-          throw new Error('volume save failed');
-        }
-        return res.json();
+        return res.json().then(function (data) {
+          if (!res.ok) {
+            throw new Error((data && data.error) || 'volume save failed');
+          }
+          return data;
+        });
       })
       .then(function (data) {
         if (typeof data.volume === 'number') {
           showVolume(data.volume);
         }
       })
-      .catch(function () { /* keep local slider value */ });
+      .catch(function (err) {
+        setStatus(editorStatus, 'Volume: ' + (err.message || 'save failed'), 'dead');
+      });
   }
 
   function queueVolumeSave(level) {
