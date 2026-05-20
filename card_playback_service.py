@@ -10,7 +10,7 @@ _DEFAULT_REL = Path('storage') / 'shared' / 'Droido-Player-Data'
 _TAP_ID_FOLDER_PREFIX_LEN = 255
 
 
-def _data_root() -> Path:
+def data_root() -> Path:
     override = os.environ.get('DROIDO_APPDIR', '').strip()
     if override:
         return Path(override).expanduser().resolve()
@@ -42,11 +42,11 @@ def sanitize_tap_id(raw: str) -> str | None:
     return key
 
 
-def _card_folder_for_tap(tap_id: str) -> Path | None:
+def card_folder(tap_id: str) -> Path | None:
     key = sanitize_tap_id(tap_id)
     if key is None:
         return None
-    root = _data_root()
+    root = data_root()
     folder = (root / key).resolve()
     try:
         folder.relative_to(root)
@@ -56,7 +56,12 @@ def _card_folder_for_tap(tap_id: str) -> Path | None:
 
 
 def find_m3u_for_tap(tap_id: str) -> Path | None:
-    folder = _card_folder_for_tap(tap_id)
+    from cards_store import playlist_path_for_tap
+
+    path = playlist_path_for_tap(tap_id)
+    if path is not None and path.is_file():
+        return path
+    folder = card_folder(tap_id)
     if folder is None or not folder.is_dir():
         return None
     for candidate in sorted(folder.iterdir()):
@@ -65,12 +70,16 @@ def find_m3u_for_tap(tap_id: str) -> Path | None:
     return None
 
 
-def _play_card_worker(tap_id: str) -> None:
+def play_card_for_tap(tap_id: str) -> bool:
     path = find_m3u_for_tap(tap_id)
     if path is None:
         audioPlayer.stop()
-        return
-    audioPlayer.play(path)
+        return False
+    return audioPlayer.play(path)
+
+
+def _play_card_worker(tap_id: str) -> None:
+    play_card_for_tap(tap_id)
 
 
 def schedule_play_card_for_tap(tap_id: str) -> None:

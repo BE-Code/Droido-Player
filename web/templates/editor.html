@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Card editor</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="editor">
+  <header class="editor-header">
+    <h1>Card editor</h1>
+    <p class="muted"><a href="/">Player</a></p>
+  </header>
+
+  <section class="panel">
+    <label for="card-select">Open card</label>
+    <div class="row">
+      <select id="card-select">
+        <option value="">— choose a card —</option>
+      </select>
+      <button type="button" id="scan-btn">Scan NFC</button>
+    </div>
+    <p id="scan-status" class="muted" hidden></p>
+  </section>
+
+  <section id="editor-panel" class="panel" hidden>
+    <p class="muted card-id-label">Card id: <code id="card-id"></code></p>
+
+    <label for="card-title">Title</label>
+    <input type="text" id="card-title" placeholder="Optional display name" autocomplete="off">
+
+    <div class="toolbar">
+      <button type="button" id="save-btn">Save</button>
+      <button type="button" id="preview-btn">Preview</button>
+      <button type="button" id="stop-btn" class="secondary">Stop</button>
+    </div>
+    <p id="editor-status" class="muted"></p>
+
+    <h2 class="tracks-heading">Tracks</h2>
+    <p id="tracks-empty" class="muted">No tracks yet. Add audio files below.</p>
+    <ol id="track-list" class="track-list"></ol>
+
+    <label class="file-label">
+      <span class="btn secondary">Add audio files</span>
+      <input type="file" id="file-input" accept="audio/*" multiple hidden>
+    </label>
+  </section>
+
+  <script src="/static/editor.js"></script>
+</body>
+</html>

@@ -12,6 +12,7 @@ if __name__ == '__main__':
     print('This device: http://127.0.0.1:{}/'.format(PORT))
     print('Other devices on WiFi: http://<this-phone-or-tablet-ip>:{}/'.format(PORT))
     print('Tap webhook example: http://127.0.0.1:{}/tapped/123'.format(PORT))
+    print('Card editor: http://127.0.0.1:{}/editor'.format(PORT))
 
     try:
         server.serve_forever()

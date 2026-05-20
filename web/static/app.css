@@ -25,13 +25,129 @@ body {
   font-size: 0.85rem;
 }
 
-button {
+button,
+.btn {
   font: inherit;
   padding: 0.5rem 1rem;
   cursor: pointer;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #f5f5f5;
 }
 
 button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+button.secondary,
+.btn.secondary {
+  background: #fff;
+}
+
+button.danger,
+.icon-btn.danger {
+  color: #a00;
+}
+
+input[type="text"],
+select {
+  font: inherit;
+  padding: 0.45rem 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+  margin-top: 0.75rem;
+}
+
+.panel {
+  margin-bottom: 1.25rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.editor-header h1 {
+  margin-bottom: 0.25rem;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.card-id-label code {
+  word-break: break-all;
+}
+
+.tracks-heading {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.track-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.track-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.35rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.track-item.missing .track-name {
+  color: #a00;
+  text-decoration: line-through;
+}
+
+.track-item.dragging {
+  opacity: 0.5;
+}
+
+.track-name {
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.track-actions {
+  display: flex;
+  gap: 0.15rem;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  padding: 0.25rem 0.45rem;
+  min-width: 2rem;
+}
+
+.file-label {
+  display: inline-block;
+  margin-top: 0.5rem;
+}
+
+.file-label input {
+  display: none;
 }
