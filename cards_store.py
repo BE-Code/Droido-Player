@@ -266,15 +266,29 @@ def normalized_commit_name(original_name: str) -> str:
     return f'{p.stem}.norm{p.suffix}'
 
 
+def _norm_sibling_basename(basename: str) -> str | None:
+    """Other on-disk name for the same logical track (foo.m4a ↔ foo.norm.m4a)."""
+    safe = sanitize_filename(basename)
+    if safe is None:
+        return None
+    p = Path(safe)
+    stem = p.stem
+    if stem.endswith('.norm'):
+        alt_stem = stem[:-5]
+        if not alt_stem:
+            return None
+        return f'{alt_stem}{p.suffix}'
+    return normalized_commit_name(safe)
+
+
 def _commit_destination_basename(
     original_name: str, choice: str, file_stem: str | None
 ) -> str | None:
-    """Basename for the committed file; optional file_stem overrides the stem only (extension unchanged)."""
+    """Basename for the committed file; choice only picks staging source, not the final name."""
+    del choice
     fs = None if file_stem is None else str(file_stem).strip()
     if not fs:
-        if choice == 'original':
-            return sanitize_filename(original_name) or 'audio'
-        return normalized_commit_name(original_name)
+        return sanitize_filename(original_name) or 'audio'
 
     ext = Path(original_name).suffix
     if ext:
@@ -284,16 +298,8 @@ def _commit_destination_basename(
             return None
         if Path(safe).suffix.lower() != ext.lower():
             return None
-        stem = Path(safe).stem
-        if choice == 'original':
-            return safe
-        return f'{stem}.norm{ext}'
-    stem = sanitize_filename(fs)
-    if stem is None:
-        return None
-    if choice == 'original':
-        return stem
-    return f'{stem}.norm'
+        return safe
+    return sanitize_filename(fs)
 
 
 def _yt_dlp_executable() -> str | None:
@@ -552,8 +558,11 @@ def commit_staging(
     dest = folder / final_name
     shutil.copy2(source, dest)
     if replace_safe:
-        old_path = folder / replace_safe
-        if old_path.is_file() and old_path.resolve() != dest.resolve():
-            old_path.unlink()
+        for name in (replace_safe, _norm_sibling_basename(replace_safe)):
+            if not name or name == final_name:
+                continue
+            old_path = folder / name
+            if old_path.is_file() and old_path.resolve() != dest.resolve():
+                old_path.unlink()
     _discard_staging_dir(staging_dir)
     return final_name
