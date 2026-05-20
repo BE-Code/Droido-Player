@@ -214,12 +214,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path_parts = self._path_parts()
 
-        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'stop':
-            audioPlayer.stop()
-            self.send_response(204)
-            self.end_headers()
-            return
-
         if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'pause':
             if not audioPlayer.set_pause(True):
                 self._send_json(503, {'error': 'pause failed'})
