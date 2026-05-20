@@ -169,7 +169,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')
             return
 
-        if len(path_parts) == 4 and path_parts[3] == 'preview':
+        if len(path_parts) == 4 and path_parts[3] == 'play':
             schedule_play_card_for_tap(card_id)
             self.send_response(204)
             self.end_headers()

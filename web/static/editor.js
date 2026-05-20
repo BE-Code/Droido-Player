@@ -6,7 +6,7 @@
   var cardIdEl = document.getElementById('card-id');
   var cardTitleEl = document.getElementById('card-title');
   var saveBtn = document.getElementById('save-btn');
-  var previewBtn = document.getElementById('preview-btn');
+  var playBtn = document.getElementById('play-btn');
   var stopBtn = document.getElementById('stop-btn');
   var editorStatus = document.getElementById('editor-status');
   var tracksEmpty = document.getElementById('tracks-empty');
@@ -218,22 +218,25 @@
       });
   }
 
-  function preview() {
-    var chain = dirty ? save() : Promise.resolve();
-    chain
-      .then(function () {
-        return fetch('/api/cards/' + encodeURIComponent(currentId) + '/preview', {
-          method: 'POST',
-        });
-      })
+  function playCard() {
+    if (!currentId) {
+      return;
+    }
+    if (dirty) {
+      setStatus(editorStatus, 'Save first — play uses the saved playlist only', 'dead');
+      return;
+    }
+    fetch('/api/cards/' + encodeURIComponent(currentId) + '/play', {
+      method: 'POST',
+    })
       .then(function (res) {
         if (!res.ok && res.status !== 204) {
-          throw new Error('preview failed');
+          throw new Error('play failed');
         }
         setStatus(editorStatus, 'Playing…', 'live');
       })
       .catch(function () {
-        setStatus(editorStatus, 'Preview failed', 'dead');
+        setStatus(editorStatus, 'Play failed', 'dead');
       });
   }
 
@@ -284,7 +287,7 @@
   cardTitleEl.addEventListener('input', markDirty);
 
   saveBtn.addEventListener('click', save);
-  previewBtn.addEventListener('click', preview);
+  playBtn.addEventListener('click', playCard);
 
   stopBtn.addEventListener('click', function () {
     fetch('/api/stop', { method: 'POST' })
