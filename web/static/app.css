@@ -235,3 +235,31 @@ label {
 .modal-actions {
   margin-top: 0.5rem;
 }
+
+.add-audio-trigger {
+  margin-top: 0.5rem;
+}
+
+.add-audio-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.add-audio-options button {
+  width: 100%;
+}
+
+.add-audio-cancel {
+  width: 100%;
+}
+
+.record-toolbar {
+  margin: 0.75rem 0;
+}
+
+#record-status.live {
+  color: #a00;
+  font-weight: 600;
+}

@@ -37,14 +37,35 @@
     <p id="editor-status" class="muted"></p>
 
     <h2 class="tracks-heading">Tracks</h2>
-    <p id="tracks-empty" class="muted">No tracks yet. Add audio files below.</p>
+    <p id="tracks-empty" class="muted">No tracks yet. Add audio below.</p>
     <ol id="track-list" class="track-list"></ol>
 
-    <label class="file-label">
-      <span class="btn secondary">Add audio files</span>
-      <input type="file" id="file-input" accept="audio/*" multiple hidden>
-    </label>
+    <button type="button" id="add-audio-btn" class="btn secondary add-audio-trigger">Add audio</button>
+    <input type="file" id="file-input" accept="audio/*" multiple hidden>
   </section>
+
+  <div id="add-audio-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close="add-audio"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="add-audio-title">
+      <h2 id="add-audio-title">Add audio</h2>
+      <div id="add-audio-choice">
+        <p class="muted">Record a new clip or choose files from this device.</p>
+        <div class="add-audio-options">
+          <button type="button" id="record-option-btn">Record</button>
+          <button type="button" id="upload-option-btn" class="secondary">Upload file</button>
+        </div>
+        <button type="button" id="add-audio-cancel-btn" class="secondary add-audio-cancel">Cancel</button>
+      </div>
+      <div id="add-audio-record" hidden>
+        <p id="record-status" class="muted">Tap Start, then speak. Tap Stop when finished.</p>
+        <div class="toolbar record-toolbar">
+          <button type="button" id="record-start-btn">Start</button>
+          <button type="button" id="record-stop-btn" hidden>Stop</button>
+        </div>
+        <button type="button" id="record-back-btn" class="secondary">Back</button>
+      </div>
+    </div>
+  </div>
 
   <div id="import-modal" class="modal" hidden>
     <div class="modal-backdrop"></div>

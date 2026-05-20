@@ -12,6 +12,17 @@
   var tracksEmpty = document.getElementById('tracks-empty');
   var trackList = document.getElementById('track-list');
   var fileInput = document.getElementById('file-input');
+  var addAudioBtn = document.getElementById('add-audio-btn');
+  var addAudioModal = document.getElementById('add-audio-modal');
+  var addAudioChoice = document.getElementById('add-audio-choice');
+  var addAudioRecord = document.getElementById('add-audio-record');
+  var recordOptionBtn = document.getElementById('record-option-btn');
+  var uploadOptionBtn = document.getElementById('upload-option-btn');
+  var addAudioCancelBtn = document.getElementById('add-audio-cancel-btn');
+  var recordStatus = document.getElementById('record-status');
+  var recordStartBtn = document.getElementById('record-start-btn');
+  var recordStopBtn = document.getElementById('record-stop-btn');
+  var recordBackBtn = document.getElementById('record-back-btn');
   var importModal = document.getElementById('import-modal');
   var importQueueLabel = document.getElementById('import-queue-label');
   var importFilename = document.getElementById('import-filename');
@@ -31,6 +42,10 @@
   var selectedVariant = 'original';
   var normalizedUrl = null;
   var normalizeInFlight = null;
+  var mediaStream = null;
+  var mediaRecorder = null;
+  var recordedChunks = [];
+  var recordMimeType = '';
 
   function setStatus(el, text, kind) {
     el.textContent = text || '';
@@ -559,14 +574,188 @@
     }
   });
 
+  function showAddAudioChoice() {
+    addAudioChoice.hidden = false;
+    addAudioRecord.hidden = true;
+    setStatus(recordStatus, 'Tap Start, then speak. Tap Stop when finished.', 'muted');
+    recordStartBtn.hidden = false;
+    recordStopBtn.hidden = true;
+    recordStartBtn.disabled = false;
+  }
+
+  function showAddAudioRecord() {
+    addAudioChoice.hidden = true;
+    addAudioRecord.hidden = false;
+    setStatus(recordStatus, 'Tap Start, then speak. Tap Stop when finished.', 'muted');
+    recordStartBtn.hidden = false;
+    recordStopBtn.hidden = true;
+    recordStartBtn.disabled = false;
+    recordStopBtn.disabled = false;
+  }
+
+  function cleanupRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      try {
+        mediaRecorder.stop();
+      } catch (e) {}
+    }
+    mediaRecorder = null;
+    recordedChunks = [];
+    if (mediaStream) {
+      mediaStream.getTracks().forEach(function (t) { t.stop(); });
+      mediaStream = null;
+    }
+    recordStartBtn.hidden = false;
+    recordStopBtn.hidden = true;
+    recordStartBtn.disabled = false;
+  }
+
+  function pickRecorderMime() {
+    var types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+    for (var i = 0; i < types.length; i++) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(types[i])) {
+        return types[i];
+      }
+    }
+    return '';
+  }
+
+  function recordingExtension(mime) {
+    if (mime.indexOf('mp4') >= 0) {
+      return 'm4a';
+    }
+    if (mime.indexOf('ogg') >= 0) {
+      return 'ogg';
+    }
+    return 'webm';
+  }
+
+  function recordingFilename() {
+    var d = new Date();
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    var stamp = d.getFullYear() +
+      pad(d.getMonth() + 1) + pad(d.getDate()) + '-' +
+      pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds());
+    return 'recording-' + stamp + '.' + recordingExtension(recordMimeType);
+  }
+
+  function openAddAudioModal() {
+    if (!currentId) {
+      return;
+    }
+    showAddAudioChoice();
+    addAudioModal.hidden = false;
+  }
+
+  function closeAddAudioModal() {
+    cleanupRecording();
+    addAudioModal.hidden = true;
+    showAddAudioChoice();
+  }
+
+  function startFileImport(files) {
+    if (!files.length) {
+      return;
+    }
+    closeAddAudioModal();
+    importQueue = Array.prototype.slice.call(files);
+    importTotal = importQueue.length;
+    processImportQueue();
+  }
+
+  addAudioBtn.addEventListener('click', openAddAudioModal);
+
+  addAudioCancelBtn.addEventListener('click', closeAddAudioModal);
+
+  addAudioModal.querySelector('.modal-backdrop').addEventListener('click', closeAddAudioModal);
+
+  uploadOptionBtn.addEventListener('click', function () {
+    fileInput.click();
+  });
+
+  recordOptionBtn.addEventListener('click', function () {
+    if (!window.MediaRecorder) {
+      showAddAudioRecord();
+      setStatus(recordStatus, 'Recording is not supported in this browser.', 'dead');
+      recordStartBtn.disabled = true;
+      return;
+    }
+    recordMimeType = pickRecorderMime();
+    if (!recordMimeType) {
+      showAddAudioRecord();
+      setStatus(recordStatus, 'No supported audio format for recording.', 'dead');
+      recordStartBtn.disabled = true;
+      return;
+    }
+    showAddAudioRecord();
+  });
+
+  recordBackBtn.addEventListener('click', function () {
+    cleanupRecording();
+    showAddAudioChoice();
+  });
+
+  recordStartBtn.addEventListener('click', function () {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus(recordStatus, 'Microphone access is not available.', 'dead');
+      return;
+    }
+    recordStartBtn.disabled = true;
+    setStatus(recordStatus, 'Requesting microphone…', 'muted');
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(function (stream) {
+        mediaStream = stream;
+        recordedChunks = [];
+        var options = recordMimeType ? { mimeType: recordMimeType } : undefined;
+        mediaRecorder = new MediaRecorder(stream, options);
+        recordMimeType = mediaRecorder.mimeType || recordMimeType || 'audio/webm';
+        mediaRecorder.ondataavailable = function (e) {
+          if (e.data && e.data.size > 0) {
+            recordedChunks.push(e.data);
+          }
+        };
+        mediaRecorder.onstop = function () {
+          var blob = new Blob(recordedChunks, { type: recordMimeType });
+          cleanupRecording();
+          if (!blob.size) {
+            openAddAudioModal();
+            showAddAudioRecord();
+            setStatus(recordStatus, 'Recording was empty — try again', 'dead');
+            return;
+          }
+          var file = new File([blob], recordingFilename(), { type: recordMimeType });
+          startFileImport([file]);
+        };
+        mediaRecorder.onerror = function () {
+          cleanupRecording();
+          setStatus(recordStatus, 'Recording failed', 'dead');
+        };
+        mediaRecorder.start();
+        recordStartBtn.hidden = true;
+        recordStopBtn.hidden = false;
+        setStatus(recordStatus, 'Recording…', 'live');
+      })
+      .catch(function () {
+        recordStartBtn.disabled = false;
+        setStatus(recordStatus, 'Microphone permission denied or unavailable.', 'dead');
+      });
+  });
+
+  recordStopBtn.addEventListener('click', function () {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      recordStopBtn.disabled = true;
+      setStatus(recordStatus, 'Finishing…', 'muted');
+      mediaRecorder.stop();
+    }
+  });
+
   fileInput.addEventListener('change', function () {
     if (!currentId || !fileInput.files.length) {
       return;
     }
-    importQueue = Array.prototype.slice.call(fileInput.files);
-    importTotal = importQueue.length;
+    var files = fileInput.files;
     fileInput.value = '';
-    processImportQueue();
+    startFileImport(files);
   });
 
   refreshCardList();
