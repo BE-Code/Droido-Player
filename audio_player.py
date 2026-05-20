@@ -19,6 +19,14 @@ class AudioPlayer:
         """Stop the audio player."""
         return False
 
+    def get_pause(self) -> bool | None:
+        """Return pause state, or None if player is not active."""
+        return None
+
+    def set_pause(self, paused: bool) -> bool:
+        """Set pause on/off."""
+        return False
+
     def forward(self) -> bool:
         """Skip forward one track."""
         return False
@@ -149,6 +157,21 @@ class MpvPlayer(AudioPlayer):
             if not self._ok(self._ipc(['loadfile', str(path), 'replace'])):
                 return False
             return self._ok(self._ipc(['set_property', 'pause', False]))
+
+    def get_pause(self) -> bool | None:
+        with self._lock:
+            if not self._alive():
+                return None
+            msg = self._ipc(['get_property', 'pause'], timeout_sec=0.5)
+            if not self._ok(msg):
+                return None
+            return bool(msg.get('data'))
+
+    def set_pause(self, paused: bool) -> bool:
+        with self._lock:
+            if not self._ensure():
+                return False
+            return self._ok(self._ipc(['set_property', 'pause', paused]))
 
     def forward(self) -> bool:
         with self._lock:

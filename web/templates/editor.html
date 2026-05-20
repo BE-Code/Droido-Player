@@ -8,15 +8,22 @@
 </head>
 <body class="editor">
   <header class="editor-header">
-    <div class="editor-header-row">
-      <h1>Card editor</h1>
-      <div class="volume-controls" aria-label="Media volume">
-        <label class="volume-label" for="volume-slider">Media volume</label>
-        <input type="range" id="volume-slider" min="0" max="100" step="1" value="100">
-        <span id="volume-value" class="volume-value" aria-live="polite">100%</span>
-      </div>
-    </div>
+    <h1>Card editor</h1>
   </header>
+
+  <section class="playback-bar panel" aria-label="Playback controls">
+    <div class="playback-transport">
+      <button type="button" id="playback-back-btn" class="playback-btn" title="Previous track" aria-label="Previous track">⏮</button>
+      <button type="button" id="playback-play-pause-btn" class="playback-btn playback-btn-primary" title="Play" aria-label="Play">▶</button>
+      <button type="button" id="playback-forward-btn" class="playback-btn" title="Next track" aria-label="Next track">⏭</button>
+    </div>
+    <div class="volume-controls" aria-label="Media volume">
+      <label class="volume-label" for="volume-slider">Volume</label>
+      <input type="range" id="volume-slider" min="0" max="100" step="1" value="100">
+      <span id="volume-value" class="volume-value" aria-live="polite">100%</span>
+    </div>
+    <p id="playback-status" class="playback-status muted" hidden></p>
+  </section>
 
   <section class="panel">
     <label for="card-select">Open card</label>
@@ -37,8 +44,6 @@
 
     <div class="toolbar">
       <button type="button" id="save-btn">Save</button>
-      <button type="button" id="play-btn">Play</button>
-      <button type="button" id="stop-btn" class="secondary">Stop</button>
     </div>
     <p id="editor-status" class="muted"></p>
 

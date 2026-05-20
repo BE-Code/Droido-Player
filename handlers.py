@@ -115,6 +115,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 self._send_json(503, {'error': str(exc)})
             return
 
+        if path == '/api/playback':
+            paused = audioPlayer.get_pause()
+            self._send_json(200, {'active': paused is not None, 'paused': paused})
+            return
+
         card_id = self._api_card_id(path_parts)
         if card_id is not None and len(path_parts) == 3:
             card = get_card(card_id)
@@ -211,6 +216,38 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
         if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'stop':
             audioPlayer.stop()
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'pause':
+            if not audioPlayer.set_pause(True):
+                self._send_json(503, {'error': 'pause failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'resume':
+            if not audioPlayer.set_pause(False):
+                self._send_json(503, {'error': 'resume failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'forward':
+            if not audioPlayer.forward():
+                self._send_json(503, {'error': 'skip forward failed'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'back':
+            if not audioPlayer.back():
+                self._send_json(503, {'error': 'skip back failed'})
+                return
             self.send_response(204)
             self.end_headers()
             return
