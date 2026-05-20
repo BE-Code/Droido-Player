@@ -151,3 +151,87 @@ label {
 .file-label input {
   display: none;
 }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal-card {
+  position: relative;
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem;
+  max-width: 24rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-card h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.15rem;
+}
+
+.import-hint {
+  margin: 0 0 0.75rem;
+  line-height: 1.4;
+}
+
+.import-filename {
+  font-weight: 600;
+  word-break: break-all;
+  margin: 0 0 0.5rem;
+}
+
+.import-audio {
+  width: 100%;
+  margin: 0.5rem 0 1rem;
+}
+
+.segmented {
+  display: flex;
+  gap: 0;
+  margin-bottom: 0.75rem;
+}
+
+.segmented-btn {
+  flex: 1;
+  border-radius: 0;
+  margin: 0;
+}
+
+.segmented-btn:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.segmented-btn:last-child {
+  border-radius: 0 4px 4px 0;
+  border-left: none;
+}
+
+.segmented-btn.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
+.modal-actions {
+  margin-top: 0.5rem;
+}

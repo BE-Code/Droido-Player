@@ -5,9 +5,19 @@ from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from audio_normalize import ffmpeg_available
 from audio_player import audioPlayer
 from card_playback_service import sanitize_tap_id, schedule_play_card_for_tap
-from cards_store import get_card, list_cards, save_card, save_uploaded_file
+from cards_store import (
+    commit_staging,
+    create_staging_upload,
+    discard_staging,
+    get_card,
+    list_cards,
+    normalize_staging,
+    resolve_audio_path,
+    save_card,
+)
 from multipart import parse_file_uploads
 from tapped_server import WAIT_TAP_TIMEOUT_SEC
 
@@ -29,6 +39,13 @@ class SimpleHandler(BaseHTTPRequestHandler):
         self.send_header('Content-length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_file(self, status: int, fs_path: Path) -> None:
+        body = fs_path.read_bytes()
+        ctype, _ = mimetypes.guess_type(str(fs_path))
+        if not ctype:
+            ctype = 'application/octet-stream'
+        self._send_bytes(status, body, ctype)
 
     def _send_json(self, status: int, obj) -> None:
         body = json.dumps(obj, ensure_ascii=False).encode('utf-8')
@@ -103,6 +120,19 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self._send_json(200, card)
             return
 
+        if (
+            card_id is not None
+            and len(path_parts) >= 5
+            and path_parts[3] == 'audio'
+        ):
+            rel = '/'.join(unquote(p) for p in path_parts[4:])
+            fs_path = resolve_audio_path(card_id, rel)
+            if fs_path is None:
+                self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')
+                return
+            self._send_file(200, fs_path)
+            return
+
         if path == '/wait-tap':
             q = self.server.register_waiter()
             try:
@@ -154,11 +184,28 @@ class SimpleHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, card)
 
+    def do_DELETE(self):
+        path_parts = self._path_parts()
+        card_id = self._api_card_id(path_parts)
+        if card_id is None:
+            self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')
+            return
+
+        if len(path_parts) == 5 and path_parts[3] == 'staging':
+            staging_id = unquote(path_parts[4])
+            if not discard_staging(card_id, staging_id):
+                self._send_json(404, {'error': 'staging not found'})
+                return
+            self.send_response(204)
+            self.end_headers()
+            return
+
+        self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')
+
     def do_POST(self):
         path_parts = self._path_parts()
-        path = '/' + '/'.join(path_parts) if path_parts else '/'
 
-        if path == '/api/stop':
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'stop':
             audioPlayer.stop()
             self.send_response(204)
             self.end_headers()
@@ -182,15 +229,57 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 return
             length = int(self.headers.get('Content-Length', 0))
             raw = self.rfile.read(length) if length > 0 else b''
-            uploaded: list[str] = []
-            for filename, data in parse_file_uploads(ctype, raw):
-                name = save_uploaded_file(card_id, filename, data)
-                if name is not None:
-                    uploaded.append(name)
-            if not uploaded:
+            uploads = parse_file_uploads(ctype, raw)
+            if not uploads:
                 self._send_json(400, {'error': 'no files uploaded'})
                 return
-            self._send_json(200, {'uploaded': uploaded})
+            filename, data = uploads[0]
+            result = create_staging_upload(card_id, filename, data)
+            if result is None:
+                self._send_json(400, {'error': 'invalid upload'})
+                return
+            self._send_json(200, result)
+            return
+
+        if len(path_parts) == 6 and path_parts[3] == 'staging' and path_parts[5] == 'normalize':
+            if not ffmpeg_available():
+                self._send_json(503, {'error': 'ffmpeg not available; install ffmpeg in Termux'})
+                return
+            staging_id = unquote(path_parts[4])
+            body = self._read_json_body() or {}
+            original_name = body.get('originalName', '')
+            if not isinstance(original_name, str) or not original_name:
+                self._send_json(400, {'error': 'originalName required'})
+                return
+            result = normalize_staging(card_id, staging_id, original_name)
+            if result is None:
+                self._send_json(500, {'error': 'normalization failed'})
+                return
+            self._send_json(200, result)
+            return
+
+        if len(path_parts) == 6 and path_parts[3] == 'staging' and path_parts[5] == 'commit':
+            staging_id = unquote(path_parts[4])
+            body = self._read_json_body()
+            if body is None:
+                self._send_json(400, {'error': 'JSON body required'})
+                return
+            choice = body.get('choice')
+            original_name = body.get('originalName', '')
+            if choice not in ('original', 'normalized'):
+                self._send_json(400, {'error': 'choice must be original or normalized'})
+                return
+            if not isinstance(original_name, str) or not original_name:
+                self._send_json(400, {'error': 'originalName required'})
+                return
+            if choice == 'normalized' and not ffmpeg_available():
+                self._send_json(503, {'error': 'ffmpeg not available'})
+                return
+            filename = commit_staging(card_id, staging_id, original_name, choice)
+            if filename is None:
+                self._send_json(400, {'error': 'commit failed'})
+                return
+            self._send_json(200, {'filename': filename})
             return
 
         self._send_bytes(404, b'Not Found', 'text/plain; charset=utf-8')

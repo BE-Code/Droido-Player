@@ -46,6 +46,28 @@
     </label>
   </section>
 
+  <div id="import-modal" class="modal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-card" role="dialog" aria-labelledby="import-title">
+      <h2 id="import-title">Import audio</h2>
+      <p id="import-queue-label" class="muted"></p>
+      <p class="muted import-hint">
+        Normalization evens loudness (e.g. quiet voice vs loud music). Listen below, pick one version, then save — this choice is final.
+      </p>
+      <p id="import-filename" class="import-filename"></p>
+      <audio id="import-audio" controls class="import-audio"></audio>
+      <div class="segmented" role="group" aria-label="Audio version">
+        <button type="button" class="segmented-btn active" data-variant="original">Original</button>
+        <button type="button" class="segmented-btn" data-variant="normalized">Normalized</button>
+      </div>
+      <p id="import-status" class="muted"></p>
+      <div class="toolbar modal-actions">
+        <button type="button" id="import-save-btn">Save to card</button>
+        <button type="button" id="import-cancel-btn" class="secondary">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/editor.js"></script>
 </body>
 </html>

@@ -12,11 +12,25 @@
   var tracksEmpty = document.getElementById('tracks-empty');
   var trackList = document.getElementById('track-list');
   var fileInput = document.getElementById('file-input');
+  var importModal = document.getElementById('import-modal');
+  var importQueueLabel = document.getElementById('import-queue-label');
+  var importFilename = document.getElementById('import-filename');
+  var importAudio = document.getElementById('import-audio');
+  var importStatus = document.getElementById('import-status');
+  var importSaveBtn = document.getElementById('import-save-btn');
+  var importCancelBtn = document.getElementById('import-cancel-btn');
+  var segmentBtns = importModal.querySelectorAll('.segmented-btn');
 
   var currentId = null;
   var tracks = [];
   var missing = [];
   var dirty = false;
+  var importQueue = [];
+  var importTotal = 0;
+  var currentStaging = null;
+  var selectedVariant = 'original';
+  var normalizedUrl = null;
+  var normalizeInFlight = null;
 
   function setStatus(el, text, kind) {
     el.textContent = text || '';
@@ -299,15 +313,119 @@
       });
   });
 
-  fileInput.addEventListener('change', function () {
-    if (!currentId || !fileInput.files.length) {
+  function setImportStatus(text, kind) {
+    setStatus(importStatus, text, kind);
+  }
+
+  function updateSegmentUi() {
+    segmentBtns.forEach(function (btn) {
+      btn.classList.toggle('active', btn.dataset.variant === selectedVariant);
+    });
+  }
+
+  function updateImportAudioSrc() {
+    if (!currentStaging) {
       return;
     }
-    var form = new FormData();
-    for (var i = 0; i < fileInput.files.length; i++) {
-      form.append('file', fileInput.files[i]);
+    if (selectedVariant === 'normalized' && normalizedUrl) {
+      importAudio.src = normalizedUrl;
+    } else {
+      importAudio.src = currentStaging.originalUrl;
     }
+    importAudio.load();
+  }
+
+  function closeImportModal() {
+    importModal.hidden = true;
+    importAudio.pause();
+    importAudio.removeAttribute('src');
+    currentStaging = null;
+    normalizedUrl = null;
+    selectedVariant = 'original';
+    normalizeInFlight = null;
+    updateSegmentUi();
+    setImportStatus('', 'muted');
+    importSaveBtn.disabled = false;
+    segmentBtns.forEach(function (btn) { btn.disabled = false; });
+  }
+
+  function discardStaging(stagingId) {
+    if (!currentId || !stagingId) {
+      return Promise.resolve();
+    }
+    return fetch(
+      '/api/cards/' + encodeURIComponent(currentId) + '/staging/' + encodeURIComponent(stagingId),
+      { method: 'DELETE' }
+    ).catch(function () {});
+  }
+
+  function ensureNormalized() {
+    if (normalizedUrl) {
+      return Promise.resolve(normalizedUrl);
+    }
+    if (normalizeInFlight) {
+      return normalizeInFlight;
+    }
+    if (!currentStaging) {
+      return Promise.reject(new Error('no staging'));
+    }
+    normalizeInFlight = fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/staging/' + encodeURIComponent(currentStaging.stagingId) + '/normalize',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ originalName: currentStaging.originalName }),
+      }
+    )
+      .then(function (res) {
+        if (res.status === 503) {
+          throw new Error('unavailable');
+        }
+        if (!res.ok) {
+          throw new Error('normalize failed');
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        normalizedUrl = data.normalizedUrl;
+        return normalizedUrl;
+      })
+      .finally(function () {
+        normalizeInFlight = null;
+      });
+    return normalizeInFlight;
+  }
+
+  function openImportModal(staging, queueIndex, queueTotal) {
+    currentStaging = staging;
+    selectedVariant = 'original';
+    normalizedUrl = staging.normalizedUrl || null;
+    importFilename.textContent = staging.originalName;
+    if (queueTotal > 1) {
+      importQueueLabel.textContent = 'File ' + (queueIndex + 1) + ' of ' + queueTotal;
+      importQueueLabel.hidden = false;
+    } else {
+      importQueueLabel.hidden = true;
+    }
+    updateSegmentUi();
+    updateImportAudioSrc();
+    importModal.hidden = false;
+    setImportStatus('', 'muted');
+    importSaveBtn.disabled = false;
+  }
+
+  function processImportQueue() {
+    if (!importQueue.length) {
+      importTotal = 0;
+      setStatus(editorStatus, 'Done adding files — save playlist when ready', 'muted');
+      return;
+    }
+    var file = importQueue.shift();
+    var index = importTotal - importQueue.length - 1;
     setStatus(editorStatus, 'Uploading…', 'live');
+    var form = new FormData();
+    form.append('file', file);
     fetch('/api/cards/' + encodeURIComponent(currentId) + '/tracks', {
       method: 'POST',
       body: form,
@@ -318,23 +436,137 @@
         }
         return res.json();
       })
-      .then(function (data) {
-        data.uploaded.forEach(function (name) {
-          if (tracks.indexOf(name) < 0) {
-            tracks.push(name);
-          }
-        });
-        renderTracks();
-        fileInput.value = '';
-        return save();
-      })
-      .then(function () {
-        setStatus(editorStatus, 'Files added', 'muted');
+      .then(function (staging) {
+        setStatus(editorStatus, '', 'muted');
+        openImportModal(staging, index, importTotal);
       })
       .catch(function () {
         setStatus(editorStatus, 'Upload failed', 'dead');
-        fileInput.value = '';
+        processImportQueue();
       });
+  }
+
+  function finishImportAndNext() {
+    var stagingId = currentStaging ? currentStaging.stagingId : null;
+    closeImportModal();
+    processImportQueue();
+    return stagingId;
+  }
+
+  segmentBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var variant = btn.dataset.variant;
+      if (!currentStaging) {
+        return;
+      }
+      if (variant === 'normalized') {
+        importSaveBtn.disabled = true;
+        segmentBtns.forEach(function (b) { b.disabled = true; });
+        setImportStatus('Processing normalization…', 'live');
+        ensureNormalized()
+          .then(function () {
+            selectedVariant = 'normalized';
+            updateSegmentUi();
+            updateImportAudioSrc();
+            setImportStatus('', 'muted');
+          })
+          .catch(function (err) {
+            if (err && err.message === 'unavailable') {
+              setImportStatus('Normalization unavailable — install ffmpeg in Termux', 'dead');
+            } else {
+              setImportStatus('Normalization failed — try Original', 'dead');
+            }
+            selectedVariant = 'original';
+            updateSegmentUi();
+            updateImportAudioSrc();
+          })
+          .finally(function () {
+            importSaveBtn.disabled = selectedVariant === 'normalized' && !normalizedUrl;
+            segmentBtns.forEach(function (b) { b.disabled = false; });
+          });
+        return;
+      }
+      selectedVariant = 'original';
+      updateSegmentUi();
+      updateImportAudioSrc();
+      setImportStatus('', 'muted');
+      importSaveBtn.disabled = false;
+    });
+  });
+
+  importSaveBtn.addEventListener('click', function () {
+    if (!currentStaging || !currentId) {
+      return;
+    }
+    if (selectedVariant === 'normalized' && !normalizedUrl) {
+      setImportStatus('Wait for normalization or choose Original', 'dead');
+      return;
+    }
+    importSaveBtn.disabled = true;
+    importCancelBtn.disabled = true;
+    setImportStatus('Saving…', 'live');
+    fetch(
+      '/api/cards/' + encodeURIComponent(currentId) +
+        '/staging/' + encodeURIComponent(currentStaging.stagingId) + '/commit',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          choice: selectedVariant,
+          originalName: currentStaging.originalName,
+        }),
+      }
+    )
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('commit failed');
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (tracks.indexOf(data.filename) < 0) {
+          tracks.push(data.filename);
+        }
+        markDirty();
+        renderTracks();
+        finishImportAndNext();
+        importCancelBtn.disabled = false;
+      })
+      .catch(function () {
+        setImportStatus('Save failed', 'dead');
+        importSaveBtn.disabled = false;
+        importCancelBtn.disabled = false;
+      });
+  });
+
+  importCancelBtn.addEventListener('click', function () {
+    if (!currentStaging) {
+      closeImportModal();
+      processImportQueue();
+      return;
+    }
+    var stagingId = currentStaging.stagingId;
+    importCancelBtn.disabled = true;
+    discardStaging(stagingId).finally(function () {
+      finishImportAndNext();
+      importCancelBtn.disabled = false;
+    });
+  });
+
+  window.addEventListener('beforeunload', function () {
+    if (currentStaging && currentId) {
+      discardStaging(currentStaging.stagingId);
+    }
+  });
+
+  fileInput.addEventListener('change', function () {
+    if (!currentId || !fileInput.files.length) {
+      return;
+    }
+    importQueue = Array.prototype.slice.call(fileInput.files);
+    importTotal = importQueue.length;
+    fileInput.value = '';
+    processImportQueue();
   });
 
   refreshCardList();
