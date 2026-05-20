@@ -593,6 +593,38 @@ label {
   background: var(--bubblegum);
 }
 
+.track-item.drag-over {
+  background: var(--bg-hover);
+  box-shadow: inset 0 3px 0 var(--sky-deep);
+}
+
+.track-drag-handle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  padding: 0.2rem 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--text-faint);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  border-radius: var(--radius-sm);
+}
+
+.track-drag-handle:hover,
+.track-drag-handle:focus-visible {
+  color: var(--grape-deep);
+  background: rgba(155, 126, 222, 0.15);
+  outline: none;
+}
+
+.track-drag-handle:active {
+  cursor: grabbing;
+}
+
 .track-name {
   flex: 1;
   min-width: 0;

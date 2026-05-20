@@ -270,6 +270,15 @@
       li.draggable = true;
       li.dataset.index = String(index);
 
+      var dragHandle = document.createElement('span');
+      dragHandle.className = 'track-drag-handle';
+      dragHandle.title = 'Drag to reorder';
+      dragHandle.setAttribute('role', 'button');
+      dragHandle.setAttribute('aria-label', 'Drag to reorder');
+      dragHandle.tabIndex = 0;
+      dragHandle.textContent = '⠿';
+      li.appendChild(dragHandle);
+
       var nameSpan = document.createElement('span');
       nameSpan.className = 'track-name';
       nameSpan.textContent = name;
@@ -277,29 +286,6 @@
 
       var actions = document.createElement('span');
       actions.className = 'track-actions';
-
-      var upBtn = document.createElement('button');
-      upBtn.type = 'button';
-      upBtn.className = 'icon-btn';
-      upBtn.textContent = '↑';
-      upBtn.title = 'Move up';
-      upBtn.disabled = index === 0;
-      upBtn.addEventListener('click', function () {
-        moveTrack(index, index - 1);
-      });
-
-      var downBtn = document.createElement('button');
-      downBtn.type = 'button';
-      downBtn.className = 'icon-btn';
-      downBtn.textContent = '↓';
-      downBtn.title = 'Move down';
-      downBtn.disabled = index === tracks.length - 1;
-      downBtn.addEventListener('click', function () {
-        moveTrack(index, index + 1);
-      });
-
-      actions.appendChild(upBtn);
-      actions.appendChild(downBtn);
 
       var isMissing = missing.indexOf(name) >= 0;
       if (isMissing) {
@@ -327,6 +313,8 @@
       li.appendChild(actions);
 
       li.addEventListener('dragstart', onDragStart);
+      li.addEventListener('dragenter', onDragEnter);
+      li.addEventListener('dragleave', onDragLeave);
       li.addEventListener('dragover', onDragOver);
       li.addEventListener('drop', onDrop);
       li.addEventListener('dragend', onDragEnd);
@@ -338,16 +326,47 @@
   var dragFrom = null;
 
   function onDragStart(e) {
+    if (!e.target.closest('.track-drag-handle')) {
+      e.preventDefault();
+      return;
+    }
     dragFrom = Number(e.currentTarget.dataset.index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragFrom));
     e.currentTarget.classList.add('dragging');
+  }
+
+  function onDragEnter(e) {
+    e.preventDefault();
+    if (dragFrom === null) {
+      return;
+    }
+    var to = Number(e.currentTarget.dataset.index);
+    if (to !== dragFrom) {
+      e.currentTarget.classList.add('drag-over');
+    }
+  }
+
+  function onDragLeave(e) {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      e.currentTarget.classList.remove('drag-over');
+    }
   }
 
   function onDragOver(e) {
     e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }
+
+  function clearDragOver() {
+    trackList.querySelectorAll('.drag-over').forEach(function (el) {
+      el.classList.remove('drag-over');
+    });
   }
 
   function onDrop(e) {
     e.preventDefault();
+    clearDragOver();
     var to = Number(e.currentTarget.dataset.index);
     if (dragFrom === null || dragFrom === to) {
       return;
@@ -358,6 +377,7 @@
 
   function onDragEnd(e) {
     e.currentTarget.classList.remove('dragging');
+    clearDragOver();
     dragFrom = null;
   }
 
@@ -1377,6 +1397,8 @@
     volumeValue.textContent = formatVolume(level);
     queueVolumeSave(level);
   });
+
+  trackList.setAttribute('aria-label', 'Tracks, drag to reorder');
 
   refreshCardList();
   loadVolume();
