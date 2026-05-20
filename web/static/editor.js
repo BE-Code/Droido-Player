@@ -39,6 +39,8 @@
   var importSaveBtn = document.getElementById('import-save-btn');
   var importCancelBtn = document.getElementById('import-cancel-btn');
   var segmentBtns = importModal.querySelectorAll('.segmented-btn');
+  var volumeSlider = document.getElementById('volume-slider');
+  var volumeValue = document.getElementById('volume-value');
 
   var currentId = null;
   var tracks = [];
@@ -54,11 +56,70 @@
   var mediaRecorder = null;
   var recordedChunks = [];
   var recordMimeType = '';
+  var volumeSaveTimer = null;
 
   function setStatus(el, text, kind) {
     el.textContent = text || '';
     el.className = kind || 'muted';
     el.hidden = !text;
+  }
+
+  function formatVolume(level) {
+    return Math.round(level) + '%';
+  }
+
+  function showVolume(level) {
+    var rounded = Math.round(level);
+    volumeSlider.value = String(rounded);
+    volumeValue.textContent = formatVolume(rounded);
+  }
+
+  function loadVolume() {
+    return fetch('/api/volume')
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('volume load failed');
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (typeof data.volume === 'number') {
+          showVolume(data.volume);
+        }
+      })
+      .catch(function () {
+        showVolume(Number(volumeSlider.value) || 100);
+      });
+  }
+
+  function saveVolume(level) {
+    return fetch('/api/volume', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ volume: level }),
+    })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error('volume save failed');
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (typeof data.volume === 'number') {
+          showVolume(data.volume);
+        }
+      })
+      .catch(function () { /* keep local slider value */ });
+  }
+
+  function queueVolumeSave(level) {
+    if (volumeSaveTimer) {
+      clearTimeout(volumeSaveTimer);
+    }
+    volumeSaveTimer = setTimeout(function () {
+      volumeSaveTimer = null;
+      saveVolume(level);
+    }, 150);
   }
 
   function markDirty() {
@@ -853,5 +914,12 @@
     startFileImport(files);
   });
 
+  volumeSlider.addEventListener('input', function () {
+    var level = Number(volumeSlider.value);
+    volumeValue.textContent = formatVolume(level);
+    queueVolumeSave(level);
+  });
+
   refreshCardList();
+  loadVolume();
 })();

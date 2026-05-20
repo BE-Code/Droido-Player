@@ -8,7 +8,14 @@
 </head>
 <body class="editor">
   <header class="editor-header">
-    <h1>Card editor</h1>
+    <div class="editor-header-row">
+      <h1>Card editor</h1>
+      <div class="volume-controls" aria-label="Playback volume">
+        <label class="volume-label" for="volume-slider">Volume</label>
+        <input type="range" id="volume-slider" min="0" max="100" step="1" value="100">
+        <span id="volume-value" class="volume-value" aria-live="polite">100%</span>
+      </div>
+    </div>
   </header>
 
   <section class="panel">

@@ -107,6 +107,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self._send_json(200, list_cards())
             return
 
+        if path == '/api/volume':
+            self._send_json(200, {'volume': audioPlayer.get_volume()})
+            return
+
         card_id = self._api_card_id(path_parts)
         if card_id is not None and len(path_parts) == 3:
             card = get_card(card_id)
@@ -205,6 +209,21 @@ class SimpleHandler(BaseHTTPRequestHandler):
             audioPlayer.stop()
             self.send_response(204)
             self.end_headers()
+            return
+
+        if len(path_parts) == 2 and path_parts[0] == 'api' and path_parts[1] == 'volume':
+            body = self._read_json_body()
+            if not isinstance(body, dict) or 'volume' not in body:
+                self._send_json(400, {'error': 'expected JSON with volume number'})
+                return
+            raw = body.get('volume')
+            if not isinstance(raw, (int, float)):
+                self._send_json(400, {'error': 'volume must be a number'})
+                return
+            if not audioPlayer.set_volume(raw):
+                self._send_json(503, {'error': 'could not set volume'})
+                return
+            self._send_json(200, {'volume': audioPlayer.get_volume()})
             return
 
         card_id = self._api_card_id(path_parts)
